@@ -1,0 +1,49 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules
+dist
+dist-ssr
+*.local
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Database files
+api/dev.db
+*.db
+*.db-journal
+
+# Backup files
+*.tar.gz
+*.zip
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.vite
+
+# Trae
+.trae
+
+# PM2
+.pm2
+
+# CloudBase
+cloudbaserc.json

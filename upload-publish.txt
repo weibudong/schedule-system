@@ -1,0 +1,6 @@
+# 解压
+tar -xzf 1111-cloudbase.tar.gz -C /tmp/schedule-system
+cd /tmp/schedule-system
+
+# 重新部署
+tcb cloudrun deploy

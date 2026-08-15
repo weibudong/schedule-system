@@ -1,0 +1,57 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id    String @id @default(cuid())
+  name  String
+  role  String @default("sales")
+}
+
+model Appointment {
+  id           String @id @default(cuid())
+  userId       String
+  date         String
+  timePeriod   String @default("上午")
+  company      String
+  type         String
+  teacher      String
+  amount       Int    @default(0)
+  remark       String @default("")
+  status       String @default("待审核")
+  customerName String
+  createdAt    DateTime @default(now())
+}
+
+model OverdueItem {
+  id          String @id @default(cuid())
+  userId      String
+  company     String
+  count       Int
+  amount      Int
+  overdueType String
+  createdAt   DateTime @default(now())
+}
+
+model OverduePeriod {
+  id         String @id @default(cuid())
+  overdueId  String
+  label      String
+  count      Int
+  amount     Int
+}
+
+model Performance {
+  id          String @id @default(cuid())
+  userId      String
+  orderDate   String?
+  invoiceDate String?
+  paymentDate String?
+  amount      Int    @default(0)
+  bonus       Int    @default(0)
+  company     String?
+}
