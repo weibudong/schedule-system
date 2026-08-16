@@ -1,0 +1,26 @@
+{
+  "exportDate": "2026-08-16T15:38:01.873Z",
+  "exportTimezone": "Asia/Shanghai",
+  "tables": {
+    "users": [
+      {
+        "id": "1",
+        "name": "兰天翔",
+        "phone": "111",
+        "password": "123",
+        "role": "admin"
+      },
+      {
+        "id": "2",
+        "name": "魏凯",
+        "phone": "222",
+        "password": "123",
+        "role": "admin"
+      }
+    ],
+    "appointments": [],
+    "overdue_items": [],
+    "overdue_periods": [],
+    "performance": []
+  }
+}
