@@ -1,0 +1,36 @@
+{
+  "application": {
+    "id": "schedule-system",
+    "name": "行程管理系统",
+    "description": "企业级行程管理与业绩统计系统"
+  },
+  "environment": {
+    "type": "Node.js",
+    "version": "18"
+  },
+  "runtime": {
+    "port": 80,
+    "memory": 1024,
+    "cpu": 1,
+    "minInstances": 0,
+    "maxInstances": 5
+  },
+  "storage": {
+    "oss": {
+      "bucket": "schedule-system-data",
+      "region": "oss-cn-hangzhou"
+    },
+    "persistencePath": "/mnt/data"
+  },
+  "database": {
+    "type": "sqlite",
+    "path": "/mnt/data/dev.db"
+  },
+  "env": {
+    "NODE_ENV": "production",
+    "PORT": "80",
+    "EMAS_ENV": "true",
+    "OSS_BUCKET": "schedule-system-data",
+    "OSS_REGION": "oss-cn-hangzhou"
+  }
+}

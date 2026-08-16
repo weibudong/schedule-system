@@ -6,9 +6,14 @@ import fs from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const isCloudBase = process.env.CLOUDBASE_ENV === 'true' || process.env.NODE_ENV === 'production';
-const dbDir = isCloudBase ? '/mnt/data' : path.join(__dirname, '..');
-if (isCloudBase) {
+const isCloudBase = process.env.CLOUDBASE_ENV === 'true';
+const isEmas = process.env.EMAS_ENV === 'true';
+const isProduction = process.env.NODE_ENV === 'production';
+const isServerless = isCloudBase || isEmas || isProduction;
+
+// 云原生环境使用 /mnt/data 持久化路径
+const dbDir = isServerless ? '/mnt/data' : path.join(__dirname, '..');
+if (isServerless) {
   fs.mkdirSync(dbDir, { recursive: true });
 }
 const dbPath = path.join(dbDir, 'dev.db');
