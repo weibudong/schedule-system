@@ -15,8 +15,16 @@ RUN npm config set registry https://mirrors.cloud.tencent.com/npm/ && \
     npm install && \
     npm cache clean --force
 
-# 复制源代码（前端已构建好的 dist 目录和后端代码）
+# 复制所有源代码
 COPY . .
+
+# 构建前端（如果 dist 目录不存在）
+RUN if [ ! -d "dist" ] || [ ! -f "dist/index.html" ]; then \
+      echo "[Build] 构建前端..."; \
+      npm run build; \
+    else \
+      echo "[Build] dist 目录已存在，跳过前端构建"; \
+    fi
 
 # 创建持久化目录和必要目录
 RUN mkdir -p /mnt/data && chmod 777 /mnt/data && \
