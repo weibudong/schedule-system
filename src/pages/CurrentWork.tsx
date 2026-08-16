@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Plus, UserPlus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, UserPlus, Database } from 'lucide-react';
 import { calendarApi, userApi } from '../api';
 import { useUser } from '../context/UserContext';
 import type { Appointment, CalendarSummary } from '../types';
@@ -18,6 +18,7 @@ export default function CurrentWork() {
   const [defaultDate, setDefaultDate] = useState('');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [isBackingUp, setIsBackingUp] = useState(false);
   
   const { currentUser, selectedUserId, users, setSelectedUserId, logout } = useUser();
 
@@ -134,6 +135,24 @@ export default function CurrentWork() {
     }
   };
 
+  const handleBackup = async () => {
+    if (isBackingUp) return;
+    setIsBackingUp(true);
+    try {
+      const res = await fetch('/api/backup', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        alert('备份邮件已发送成功！');
+      } else {
+        alert('备份失败：' + (data.error || '未知错误'));
+      }
+    } catch (error) {
+      alert('备份请求失败，请检查网络连接');
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 pt-10">
       <div className="fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200">
@@ -189,12 +208,22 @@ export default function CurrentWork() {
               <Plus className="w-5 h-5" />
             </button>
             {currentUser?.role === 'admin' && (
-              <button 
-                onClick={() => setIsAddUserModalOpen(true)}
-                className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
-              >
-                <UserPlus className="w-5 h-5" />
-              </button>
+              <>
+                <button 
+                  onClick={handleBackup}
+                  disabled={isBackingUp}
+                  className={`p-2 rounded-lg ${isBackingUp ? 'text-gray-400 bg-gray-100' : 'text-purple-600 hover:bg-purple-50'}`}
+                  title="备份数据到邮箱"
+                >
+                  <Database className="w-5 h-5" />
+                </button>
+                <button 
+                  onClick={() => setIsAddUserModalOpen(true)}
+                  className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                >
+                  <UserPlus className="w-5 h-5" />
+                </button>
+              </>
             )}
           </div>
         </div>
