@@ -2,6 +2,10 @@
  * This is a API server
  */
 
+import dotenv from 'dotenv'
+// load env BEFORE any other imports
+dotenv.config()
+
 import express, {
   type Request,
   type Response,
@@ -9,7 +13,6 @@ import express, {
 } from 'express'
 import cors from 'cors'
 import path from 'path'
-import dotenv from 'dotenv'
 import { fileURLToPath } from 'url'
 import authRoutes from './routes/auth.js'
 import calendarRoutes from './routes/calendar.js'
@@ -21,9 +24,6 @@ import { initDb } from './db/index.js'
 // for esm mode
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-
-// load env
-dotenv.config()
 
 const app: express.Application = express()
 

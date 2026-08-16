@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import cron from 'node-cron';
 import nodemailer from 'nodemailer';
 import path from 'path';
@@ -8,7 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const isCloudBase = process.env.CLOUDBASE_ENV === 'true';
-const dbPath = isCloudBase ? '/mnt/data/dev.db' : path.join(__dirname, 'db', 'dev.db');
+const dbPath = isCloudBase ? '/mnt/data/dev.db' : path.join(__dirname, '..', 'dev.db');
 
 const BACKUP_CONFIG = {
   cron: '0 2 * * *',
