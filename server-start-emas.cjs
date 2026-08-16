@@ -1,8 +1,8 @@
 /**
  * 阿里云 EMAS 环境启动器
- * 适配 EMAS Serverless 部署环境
+ * 使用 tsx CLI 方式启动，避免 Node.js 22 ESM 兼容性问题
  */
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -30,29 +30,38 @@ if (isEmas) {
   }
 }
 
-// 确保 tsx 可用
-const tsxPath = require.resolve('tsx/cli');
-console.log('[EMAS] tsx 路径:', tsxPath);
+// 查找 tsx 路径
+const tsxBinPath = path.join(__dirname, 'node_modules', '.bin', 'tsx');
+const serverPath = path.join(__dirname, 'api', 'server.ts');
 
-// 启动主服务
-const serverPath = path.join(__dirname, 'api/server.ts');
+console.log(`[EMAS] tsx 路径: ${tsxBinPath}`);
 console.log(`[EMAS] 启动服务: ${serverPath}`);
 console.log(`[EMAS] 端口: ${port}`);
 
-const child = exec(`node -r tsx ${serverPath}`, {
+// 检查 tsx 是否存在
+if (!fs.existsSync(tsxBinPath)) {
+  console.error('[EMAS] tsx 未安装，请先运行 npm install');
+  process.exit(1);
+}
+
+// 使用 tsx 启动 TypeScript 服务
+const child = spawn(tsxBinPath, [serverPath], {
   env: {
     ...process.env,
     PORT: String(port),
     EMAS_ENV: isEmas ? 'true' : 'false'
-  }
+  },
+  stdio: 'inherit'
 });
-
-child.stdout?.pipe(process.stdout);
-child.stderr?.pipe(process.stderr);
 
 child.on('close', (code) => {
   console.log(`[EMAS] 服务退出，代码: ${code}`);
   process.exit(code || 0);
+});
+
+child.on('error', (err) => {
+  console.error('[EMAS] 启动失败:', err.message);
+  process.exit(1);
 });
 
 // 优雅关闭

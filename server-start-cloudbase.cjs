@@ -1,8 +1,8 @@
 /**
  * CloudBase 云托管启动入口
- * 设置 CLOUDBASE_ENV=true 以启用持久化存储路径
+ * 使用 tsx CLI 方式启动，避免 Node.js 22 ESM 兼容性问题
  */
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -16,7 +16,8 @@ const port = process.env.PORT;
 console.log('[CloudBase] 启动配置：', {
   port,
   cloudbaseEnv: process.env.CLOUDBASE_ENV,
-  nodeEnv: process.env.NODE_ENV
+  nodeEnv: process.env.NODE_ENV,
+  nodeVersion: process.version
 });
 
 // 确保持久化目录存在
@@ -27,23 +28,42 @@ try {
   console.log('[CloudBase] 无法创建 /mnt/data（可能是本地环境），跳过');
 }
 
-// 使用 tsx 运行 TypeScript 服务
-const serverPath = path.join(__dirname, 'api/server.ts');
+// 查找 tsx 路径
+const tsxBinPath = path.join(__dirname, 'node_modules', '.bin', 'tsx');
+const serverPath = path.join(__dirname, 'api', 'server.ts');
+
+console.log(`[CloudBase] tsx 路径: ${tsxBinPath}`);
 console.log(`[CloudBase] 启动服务: ${serverPath}`);
 
-const child = exec(`node -r tsx ${serverPath}`, {
+// 检查 tsx 是否存在
+if (!fs.existsSync(tsxBinPath)) {
+  console.error('[CloudBase] tsx 未安装，正在尝试查找其他路径...');
+  const altPath = path.join(__dirname, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  if (fs.existsSync(altPath)) {
+    console.log(`[CloudBase] 找到 tsx CLI: ${altPath}`);
+  } else {
+    console.error('[CloudBase] 错误: 找不到 tsx，请先运行 npm install');
+    process.exit(1);
+  }
+}
+
+// 使用 tsx 启动 TypeScript 服务（spawn 更可靠）
+const child = spawn(tsxBinPath, [serverPath], {
   env: {
     ...process.env,
     PORT: String(port)
-  }
+  },
+  stdio: 'inherit'
 });
-
-child.stdout?.pipe(process.stdout);
-child.stderr?.pipe(process.stderr);
 
 child.on('close', (code) => {
   console.log(`[CloudBase] 服务退出，代码: ${code}`);
   process.exit(code || 0);
+});
+
+child.on('error', (err) => {
+  console.error('[CloudBase] 启动失败:', err.message);
+  process.exit(1);
 });
 
 // 优雅关闭
