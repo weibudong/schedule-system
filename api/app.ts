@@ -13,12 +13,13 @@ import express, {
 } from 'express'
 import cors from 'cors'
 import path from 'path'
+import fs from 'fs'
 import { fileURLToPath } from 'url'
 import authRoutes from './routes/auth.js'
 import calendarRoutes from './routes/calendar.js'
 import performanceRoutes from './routes/performance.js'
 import userRoutes from './routes/users.js'
-import { sendBackup } from './services/backup.js'
+import { sendBackup, restoreFromBackup, hasPersistence, backupDataDir } from './services/backup.js'
 import { initDb } from './db/index.js'
 
 // for esm mode
@@ -54,9 +55,58 @@ app.post('/api/backup', async (req: Request, res: Response) => {
         emailSent: result.emailSent,
         jsonExported: result.jsonExported,
         gitPushed: result.gitPushed,
+        backupTime: result.backupTime,
+        persistenceMode: result.persistenceMode,
         errors: result.errors
       }
     });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+/**
+ * 查询备份状态
+ */
+app.get('/api/backup/status', (req: Request, res: Response) => {
+  try {
+    // 获取可用的备份文件列表
+    const backupFiles: string[] = [];
+    if (fs.existsSync(backupDataDir)) {
+      const files = fs.readdirSync(backupDataDir).filter(f => f.startsWith('data-') && f.endsWith('.json'));
+      backupFiles.push(...files.sort().reverse().slice(0, 10));
+    }
+    
+    res.json({
+      persistence: hasPersistence,
+      persistenceMode: hasPersistence ? '持久化存储' : '容器临时存储',
+      warning: hasPersistence ? null : '无持久化存储，容器重启会丢失数据',
+      backupFiles,
+      mailConfigured: !!process.env.MAIL_PASS,
+      gitPushEnabled: process.env.ENABLE_GIT_PUSH === 'true'
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+/**
+ * 从备份恢复数据
+ */
+app.post('/api/backup/restore', async (req: Request, res: Response) => {
+  try {
+    const { dateStr } = req.body as { dateStr: string };
+    if (!dateStr) {
+      res.status(400).json({ success: false, error: '请提供备份日期' });
+      return;
+    }
+    
+    const result = await restoreFromBackup(dateStr);
+    if (result.success) {
+      res.json({ success: true, message: '数据恢复成功' });
+    } else {
+      res.status(500).json({ success: false, error: result.error });
+    }
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
   }

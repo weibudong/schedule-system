@@ -2,9 +2,9 @@
  * 阿里云 EMAS 环境启动器
  * 适配 EMAS Serverless 部署环境
  */
-import { exec } from 'child_process';
-import fs from 'fs';
-import path from 'path';
+const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 const port = process.env.PORT || 80;
 const isEmas = process.env.EMAS_ENV === 'true';
@@ -30,11 +30,16 @@ if (isEmas) {
   }
 }
 
-// 启动主服务
-const serverPath = path.join(__dirname, 'api/server.js');
-console.log(`[EMAS] 启动服务: ${serverPath}`);
+// 确保 tsx 可用
+const tsxPath = require.resolve('tsx/cli');
+console.log('[EMAS] tsx 路径:', tsxPath);
 
-const child = exec(`node ${serverPath}`, {
+// 启动主服务
+const serverPath = path.join(__dirname, 'api/server.ts');
+console.log(`[EMAS] 启动服务: ${serverPath}`);
+console.log(`[EMAS] 端口: ${port}`);
+
+const child = exec(`node -r tsx ${serverPath}`, {
   env: {
     ...process.env,
     PORT: String(port),

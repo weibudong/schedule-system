@@ -12,11 +12,21 @@ const isProduction = process.env.NODE_ENV === 'production';
 const isServerless = isCloudBase || isEmas || isProduction;
 
 // 云原生环境使用 /mnt/data 持久化路径
-const dbDir = isServerless ? '/mnt/data' : path.join(__dirname, '..');
+// 如果 /mnt/data 无法创建（本地测试），回退到项目目录
+let dbDir: string;
 if (isServerless) {
-  fs.mkdirSync(dbDir, { recursive: true });
+  try {
+    fs.mkdirSync('/mnt/data', { recursive: true });
+    dbDir = '/mnt/data';
+  } catch (err) {
+    console.warn('[DB] 无法使用 /mnt/data，回退到项目目录:', err);
+    dbDir = path.join(__dirname, '..');
+  }
+} else {
+  dbDir = path.join(__dirname, '..');
 }
 const dbPath = path.join(dbDir, 'dev.db');
+console.log('[DB] 数据库路径:', dbPath);
 
 export const db = new Database(dbPath);
 
