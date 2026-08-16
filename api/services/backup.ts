@@ -35,9 +35,10 @@ const BACKUP_CONFIG = {
       user: process.env.MAIL_USER || '307641135@qq.com',
       pass: process.env.MAIL_PASS || ''
     },
-    host: 'smtp.qq.com',
-    port: 465,
-    secure: true
+    // QQ邮箱 SMTP 配置
+    host: process.env.SMTP_HOST || 'smtp.qq.com',
+    port: parseInt(process.env.SMTP_PORT || '465'),
+    secure: process.env.SMTP_SECURE !== 'false'
   }
 };
 
@@ -49,15 +50,47 @@ function getTransporter() {
     return null;
   }
 
-  return nodemailer.createTransport({
+  console.log('[Backup] 创建邮件传输器:', {
+    host: BACKUP_CONFIG.mail.host,
+    port: BACKUP_CONFIG.mail.port,
+    secure: BACKUP_CONFIG.mail.secure,
+    user: BACKUP_CONFIG.mail.auth.user
+  });
+
+  // QQ邮箱支持两种方式：
+  // 1. 465端口 + SSL (secure: true)
+  // 2. 587端口 + STARTTLS (secure: false)
+  const transporter = nodemailer.createTransport({
     host: BACKUP_CONFIG.mail.host,
     port: BACKUP_CONFIG.mail.port,
     secure: BACKUP_CONFIG.mail.secure,
     auth: BACKUP_CONFIG.mail.auth,
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 30000
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000,
+    // 生产环境可能需要跳过SSL验证
+    tls: {
+      rejectUnauthorized: process.env.NODE_ENV === 'production' ? false : true
+    }
   });
+
+  return transporter;
+}
+
+// 测试邮件连接
+async function testEmailConnection(): Promise<boolean> {
+  const transporter = getTransporter();
+  if (!transporter) return false;
+
+  try {
+    console.log('[Backup] 测试邮件连接...');
+    await transporter.verify();
+    console.log('[Backup] 邮件连接测试成功');
+    return true;
+  } catch (error) {
+    console.error('[Backup] 邮件连接测试失败:', error instanceof Error ? error.message : error);
+    return false;
+  }
 }
 
 // 导出数据库为 JSON
@@ -126,51 +159,81 @@ function cleanOldBackups() {
   }
 }
 
-// 发送备份邮件
+// 发送备份邮件（带重试机制）
 async function sendEmailBackup(timeStr: string, jsonFilePath?: string): Promise<boolean> {
-  const transporter = getTransporter();
-  if (!transporter) {
-    console.log('[Backup] 邮件未配置，跳过邮件备份');
-    return false;
-  }
+  const maxRetries = 3;
+  let lastError: Error | null = null;
 
-  try {
-    if (!fs.existsSync(dbPath)) {
-      console.error('[Backup] 数据库文件不存在，无法发送邮件');
-      return false;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    if (attempt > 1) {
+      console.log(`[Backup] 邮件发送重试 ${attempt}/${maxRetries}...`);
+      await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
     }
 
-    const attachments: any[] = [
-      {
-        filename: `dev-backup-${timeStr}.db`,
-        path: dbPath,
-        contentType: 'application/octet-stream'
+    try {
+      const transporter = getTransporter();
+      if (!transporter) {
+        console.log('[Backup] 邮件未配置，跳过邮件备份');
+        return false;
       }
-    ];
 
-    if (jsonFilePath && fs.existsSync(jsonFilePath)) {
-      attachments.push({
-        filename: `data-${timeStr}.json`,
-        path: jsonFilePath,
-        contentType: 'application/json'
+      if (!fs.existsSync(dbPath)) {
+        console.error('[Backup] 数据库文件不存在，无法发送邮件');
+        return false;
+      }
+
+      const attachments: any[] = [
+        {
+          filename: `dev-backup-${timeStr}.db`,
+          path: dbPath,
+          contentType: 'application/octet-stream'
+        }
+      ];
+
+      if (jsonFilePath && fs.existsSync(jsonFilePath)) {
+        attachments.push({
+          filename: `data-${timeStr}.json`,
+          path: jsonFilePath,
+          contentType: 'application/json'
+        });
+      }
+
+      const now = new Date();
+      const info = await transporter.sendMail({
+        from: BACKUP_CONFIG.mail.from,
+        to: BACKUP_CONFIG.mail.to,
+        subject: `[备份] 行程系统数据 ${timeStr}`,
+        text: `备份时间：${now.toLocaleString('zh-CN')}\n\n数据库路径：${dbPath}\n\n附件包含：\n1. 数据库备份 (.db)\n2. 数据导出 (.json)`,
+        attachments
       });
+
+      console.log(`[Backup] 邮件发送成功: ${timeStr}, 消息ID: ${info.messageId}`);
+      return true;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.error(`[Backup] 邮件发送失败 (尝试 ${attempt}/${maxRetries}):`, lastError.message);
+      
+      // 如果是认证错误，不需要重试
+      if (lastError.message.includes('535') || lastError.message.includes('auth')) {
+        console.error('[Backup] 认证失败，请检查 MAIL_PASS 配置');
+        break;
+      }
     }
-
-    const now = new Date();
-    await transporter.sendMail({
-      from: BACKUP_CONFIG.mail.from,
-      to: BACKUP_CONFIG.mail.to,
-      subject: `[备份] 行程系统数据 ${timeStr}`,
-      text: `备份时间：${now.toLocaleString('zh-CN')}\n\n数据库路径：${dbPath}\n\n附件包含：\n1. 数据库备份 (.db)\n2. 数据导出 (.json)`,
-      attachments
-    });
-
-    console.log(`[Backup] 邮件发送成功: ${timeStr}`);
-    return true;
-  } catch (error) {
-    console.error('[Backup] 邮件发送失败:', error instanceof Error ? error.message : error);
-    return false;
   }
+
+  if (lastError) {
+    console.error('[Backup] 邮件发送最终失败:', {
+      message: lastError.message,
+      code: (lastError as any).code,
+      command: (lastError as any).command
+    });
+    console.error('[Backup] 请检查：');
+    console.error('  1. CloudBase 环境变量 MAIL_USER 和 MAIL_PASS 是否已正确配置');
+    console.error('  2. QQ邮箱授权码是否正确（登录 QQ邮箱 -> 设置 -> 账户 -> 开启 SMTP）');
+    console.error('  3. CloudBase 是否允许出站 SMTP 连接');
+  }
+  
+  return false;
 }
 
 // 手动复制备份到项目目录（便于随项目一起部署）
@@ -314,6 +377,8 @@ export function startBackupCron() {
     fs.mkdirSync(backupDataDir, { recursive: true });
   }
 
+  const mailConfigured = !!BACKUP_CONFIG.mail.auth.pass;
+  
   // 打印配置
   console.log('╔══════════════════════════════════════════════════════════════╗');
   console.log('║  数据备份服务启动                                            ║');
@@ -322,7 +387,10 @@ export function startBackupCron() {
   console.log(`║  云平台: ${isCloudBase ? 'CloudBase' : isEmas ? 'EMAS' : '本地'}`);
   console.log(`║  数据库: ${dbPath}`);
   console.log(`║  JSON备份: ${backupDataDir}`);
-  console.log(`║  邮件备份: ${BACKUP_CONFIG.mail.auth.pass ? '启用 → ' + BACKUP_CONFIG.mail.to : '未配置'}`);
+  console.log(`║  邮件备份: ${mailConfigured ? `启用 → ${BACKUP_CONFIG.mail.to}` : '未配置'}`);
+  if (mailConfigured) {
+    console.log(`║  SMTP配置: ${BACKUP_CONFIG.mail.host}:${BACKUP_CONFIG.mail.port} (${BACKUP_CONFIG.mail.secure ? 'SSL' : 'STARTTLS'})`);
+  }
   console.log(`║  定时任务: ${BACKUP_CONFIG.cron} (每日凌晨2点)`);
   console.log('╚══════════════════════════════════════════════════════════════╝');
 
@@ -332,6 +400,17 @@ export function startBackupCron() {
   }, {
     timezone: 'Asia/Shanghai'
   });
+
+  // 启动后测试邮件连接（异步，不阻塞启动）
+  if (mailConfigured) {
+    setTimeout(async () => {
+      const connected = await testEmailConnection();
+      if (!connected) {
+        console.warn('[Backup] ⚠️  邮件连接测试失败，备份时将重试');
+        console.warn('[Backup] 请检查 CloudBase 环境变量配置');
+      }
+    }, 2000);
+  }
 
   // 启动后立即执行一次备份
   setTimeout(async () => {

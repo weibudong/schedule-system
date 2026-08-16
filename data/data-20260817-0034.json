@@ -1,0 +1,27 @@
+{
+  "exportDate": "2026-08-16T16:34:14.866Z",
+  "exportTimezone": "Asia/Shanghai",
+  "sourcePath": "/Users/wk/Desktop/1111/api/dev.db",
+  "tables": {
+    "users": [
+      {
+        "id": "1",
+        "name": "兰天翔",
+        "phone": "111",
+        "password": "123",
+        "role": "admin"
+      },
+      {
+        "id": "2",
+        "name": "魏凯",
+        "phone": "222",
+        "password": "123",
+        "role": "admin"
+      }
+    ],
+    "appointments": [],
+    "overdue_items": [],
+    "overdue_periods": [],
+    "performance": []
+  }
+}
