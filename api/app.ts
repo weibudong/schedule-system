@@ -19,7 +19,7 @@ import authRoutes from './routes/auth.js'
 import calendarRoutes from './routes/calendar.js'
 import performanceRoutes from './routes/performance.js'
 import userRoutes from './routes/users.js'
-import { sendBackup, restoreFromBackup, hasPersistence, backupDataDir } from './services/backup.js'
+import { sendBackup, restoreFromBackup, backupDataDir } from './services/backup.js'
 import { initDb } from './db/index.js'
 
 // for esm mode
@@ -54,9 +54,8 @@ app.post('/api/backup', async (req: Request, res: Response) => {
       details: {
         emailSent: result.emailSent,
         jsonExported: result.jsonExported,
-        gitPushed: result.gitPushed,
+        dbCopied: result.dbCopied,
         backupTime: result.backupTime,
-        persistenceMode: result.persistenceMode,
         errors: result.errors
       }
     });
@@ -77,13 +76,18 @@ app.get('/api/backup/status', (req: Request, res: Response) => {
       backupFiles.push(...files.sort().reverse().slice(0, 10));
     }
     
+    // 获取 .db 备份文件列表
+    const dbBackupFiles: string[] = [];
+    const backupDir = path.join(__dirname, '..', 'backup');
+    if (fs.existsSync(backupDir)) {
+      const files = fs.readdirSync(backupDir).filter(f => f.startsWith('dev-backup-') && f.endsWith('.db'));
+      dbBackupFiles.push(...files.sort().reverse().slice(0, 10));
+    }
+    
     res.json({
-      persistence: hasPersistence,
-      persistenceMode: hasPersistence ? '持久化存储' : '容器临时存储',
-      warning: hasPersistence ? null : '无持久化存储，容器重启会丢失数据',
       backupFiles,
-      mailConfigured: !!process.env.MAIL_PASS,
-      gitPushEnabled: process.env.ENABLE_GIT_PUSH === 'true'
+      dbBackupFiles,
+      mailConfigured: !!process.env.MAIL_PASS
     });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });

@@ -1,31 +1,15 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const isCloudBase = process.env.CLOUDBASE_ENV === 'true';
-const isEmas = process.env.EMAS_ENV === 'true';
-const isProduction = process.env.NODE_ENV === 'production';
-const isServerless = isCloudBase || isEmas || isProduction;
-
-// 云原生环境使用 /mnt/data 持久化路径
-// 如果 /mnt/data 无法创建（本地测试），回退到项目目录
-let dbDir: string;
-if (isServerless) {
-  try {
-    fs.mkdirSync('/mnt/data', { recursive: true });
-    dbDir = '/mnt/data';
-  } catch (err) {
-    console.warn('[DB] 无法使用 /mnt/data，回退到项目目录:', err);
-    dbDir = path.join(__dirname, '..');
-  }
-} else {
-  dbDir = path.join(__dirname, '..');
-}
-const dbPath = path.join(dbDir, 'dev.db');
+// 数据库路径：始终使用 api/dev.db
+// __dirname 是 api/db/，需要 .. 才能到 api/
+// 本地开发: api/dev.db
+// 生产环境: /app/api/dev.db
+const dbPath = path.join(__dirname, '..', 'dev.db');
 console.log('[DB] 数据库路径:', dbPath);
 
 export const db = new Database(dbPath);

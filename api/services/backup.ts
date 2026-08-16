@@ -6,7 +6,6 @@ import nodemailer from 'nodemailer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
 import Database from 'better-sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -14,41 +13,21 @@ const __dirname = path.dirname(__filename);
 
 const isCloudBase = process.env.CLOUDBASE_ENV === 'true';
 const isEmas = process.env.EMAS_ENV === 'true';
-const isServerless = isCloudBase || isEmas;
 const isProduction = process.env.NODE_ENV === 'production';
 
-// 数据库路径
-let dbPath: string;
-let projectRoot: string;
-let hasPersistence: boolean;
-
-if (isServerless) {
-  try {
-    fs.mkdirSync('/mnt/data', { recursive: true });
-    dbPath = '/mnt/data/dev.db';
-    projectRoot = '/mnt';
-    hasPersistence = true;
-    console.log('[Backup] 使用持久化存储: /mnt/data');
-  } catch (err) {
-    console.warn('[Backup] 无持久化存储，使用容器文件系统（容器重启会丢失数据）');
-    dbPath = path.join(__dirname, '..', 'dev.db');
-    projectRoot = path.join(__dirname, '..', '..');
-    hasPersistence = false;
-  }
-} else {
-  dbPath = path.join(__dirname, '..', 'dev.db');
-  projectRoot = path.join(__dirname, '..', '..');
-  hasPersistence = true;
-}
-
-// 备份数据目录
+// 数据库路径：始终使用 api/dev.db
+// 在生产环境中: /app/api/dev.db
+// 在本地环境中: api/dev.db
+const dbPath = path.join(__dirname, '..', 'dev.db');
+const projectRoot = path.join(__dirname, '..', '..');
 const backupDataDir = path.join(projectRoot, 'data');
 
+console.log('[Backup] 数据库路径:', dbPath);
+console.log('[Backup] 项目根目录:', projectRoot);
+console.log('[Backup] 备份目录:', backupDataDir);
+
 const BACKUP_CONFIG = {
-  // 定时备份：凌晨2点（有持久化）或每小时（无持久化）
-  cron: hasPersistence ? '0 2 * * *' : '0 * * * *',
-  // 自动备份间隔（分钟），无持久化时生效
-  autoBackupInterval: hasPersistence ? 0 : 30,
+  cron: '0 2 * * *',
   mail: {
     from: process.env.MAIL_FROM || '307641135@qq.com',
     to: process.env.MAIL_TO || '307641135@qq.com',
@@ -59,15 +38,14 @@ const BACKUP_CONFIG = {
     host: 'smtp.qq.com',
     port: 465,
     secure: true
-  },
-  enableGitPush: process.env.ENABLE_GIT_PUSH === 'true' || !isProduction
+  }
 };
 
 let lastBackupTime: Date | null = null;
-let backupInterval: ReturnType<typeof setInterval> | null = null;
 
 function getTransporter() {
   if (!BACKUP_CONFIG.mail.auth.pass) {
+    console.warn('[Backup] MAIL_PASS not configured, email backup disabled');
     return null;
   }
 
@@ -82,11 +60,11 @@ function getTransporter() {
   });
 }
 
-// 导出数据库为 JSON 文件
+// 导出数据库为 JSON
 function exportToJson(dateStr: string): { success: boolean; filePath?: string; error?: string } {
   try {
     if (!fs.existsSync(dbPath)) {
-      return { success: false, error: '数据库文件不存在' };
+      return { success: false, error: `数据库文件不存在: ${dbPath}` };
     }
 
     const db = new Database(dbPath, { readonly: true });
@@ -95,14 +73,14 @@ function exportToJson(dateStr: string): { success: boolean; filePath?: string; e
       exportDate: new Date().toISOString(),
       exportTimezone: 'Asia/Shanghai',
       sourcePath: dbPath,
-      tables: {} as Record<string, any[]>
+      tables: {
+        users: db.prepare('SELECT * FROM users').all(),
+        appointments: db.prepare('SELECT * FROM appointments').all(),
+        overdue_items: db.prepare('SELECT * FROM overdue_items').all(),
+        overdue_periods: db.prepare('SELECT * FROM overdue_periods').all(),
+        performance: db.prepare('SELECT * FROM performance').all()
+      }
     };
-
-    exportData.tables.users = db.prepare('SELECT * FROM users').all();
-    exportData.tables.appointments = db.prepare('SELECT * FROM appointments').all();
-    exportData.tables.overdue_items = db.prepare('SELECT * FROM overdue_items').all();
-    exportData.tables.overdue_periods = db.prepare('SELECT * FROM overdue_periods').all();
-    exportData.tables.performance = db.prepare('SELECT * FROM performance').all();
 
     db.close();
 
@@ -113,15 +91,15 @@ function exportToJson(dateStr: string): { success: boolean; filePath?: string; e
     const jsonFilePath = path.join(backupDataDir, `data-${dateStr}.json`);
     fs.writeFileSync(jsonFilePath, JSON.stringify(exportData, null, 2), 'utf-8');
 
-    console.log(`[Backup] 数据导出成功: ${jsonFilePath}`);
+    console.log(`[Backup] JSON导出成功: ${jsonFilePath}`);
     return { success: true, filePath: jsonFilePath };
   } catch (error) {
-    console.error('[Backup] 导出失败:', error instanceof Error ? error.message : error);
+    console.error('[Backup] JSON导出失败:', error instanceof Error ? error.message : error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
-// 清理旧备份文件（保留最近7天）
+// 清理旧备份（保留7天）
 function cleanOldBackups() {
   try {
     if (!fs.existsSync(backupDataDir)) return;
@@ -148,61 +126,90 @@ function cleanOldBackups() {
   }
 }
 
-// 推送到 Git
-function pushToGit(dateStr: string): { success: boolean; error?: string } {
+// 发送备份邮件
+async function sendEmailBackup(timeStr: string, jsonFilePath?: string): Promise<boolean> {
+  const transporter = getTransporter();
+  if (!transporter) {
+    console.log('[Backup] 邮件未配置，跳过邮件备份');
+    return false;
+  }
+
   try {
-    if (!BACKUP_CONFIG.enableGitPush) {
-      return { success: false, error: 'Git push disabled' };
+    if (!fs.existsSync(dbPath)) {
+      console.error('[Backup] 数据库文件不存在，无法发送邮件');
+      return false;
     }
 
-    try {
-      execSync('git rev-parse --is-inside-work-tree', { cwd: projectRoot, stdio: 'pipe' });
-    } catch {
-      return { success: false, error: 'Not in a Git repository' };
-    }
-
-    const dataDirPath = path.join(projectRoot, 'data');
-    if (fs.existsSync(dataDirPath)) {
-      execSync('git add data/', { cwd: projectRoot, stdio: 'pipe' });
-      
-      const commitMessage = `[自动备份] 数据备份 ${dateStr}`;
-      execSync(`git commit -m "${commitMessage}" --allow-empty`, { cwd: projectRoot, stdio: 'pipe' });
-      
-      try {
-        execSync('git push origin main', { 
-          cwd: projectRoot, 
-          stdio: 'pipe',
-          timeout: 30000 
-        });
-        console.log('[Backup] Git 推送成功');
-        return { success: true };
-      } catch (pushError) {
-        return { success: false, error: `Git push failed: ${pushError instanceof Error ? pushError.message : String(pushError)}` };
+    const attachments: any[] = [
+      {
+        filename: `dev-backup-${timeStr}.db`,
+        path: dbPath,
+        contentType: 'application/octet-stream'
       }
+    ];
+
+    if (jsonFilePath && fs.existsSync(jsonFilePath)) {
+      attachments.push({
+        filename: `data-${timeStr}.json`,
+        path: jsonFilePath,
+        contentType: 'application/json'
+      });
     }
-    return { success: false, error: 'No data directory' };
+
+    const now = new Date();
+    await transporter.sendMail({
+      from: BACKUP_CONFIG.mail.from,
+      to: BACKUP_CONFIG.mail.to,
+      subject: `[备份] 行程系统数据 ${timeStr}`,
+      text: `备份时间：${now.toLocaleString('zh-CN')}\n\n数据库路径：${dbPath}\n\n附件包含：\n1. 数据库备份 (.db)\n2. 数据导出 (.json)`,
+      attachments
+    });
+
+    console.log(`[Backup] 邮件发送成功: ${timeStr}`);
+    return true;
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    console.error('[Backup] 邮件发送失败:', error instanceof Error ? error.message : error);
+    return false;
   }
 }
 
-async function sendBackup(): Promise<{ 
-  success: boolean; 
-  emailSent: boolean; 
-  jsonExported: boolean; 
-  gitPushed: boolean; 
+// 手动复制备份到项目目录（便于随项目一起部署）
+function copyBackupToProject(timeStr: string): string | null {
+  try {
+    if (!fs.existsSync(dbPath)) return null;
+    
+    const copyDir = path.join(projectRoot, 'backup');
+    if (!fs.existsSync(copyDir)) {
+      fs.mkdirSync(copyDir, { recursive: true });
+    }
+    
+    const copyPath = path.join(copyDir, `dev-backup-${timeStr}.db`);
+    fs.copyFileSync(dbPath, copyPath);
+    console.log(`[Backup] 数据库备份已复制到: ${copyPath}`);
+    return copyPath;
+  } catch (error) {
+    console.warn('[Backup] 复制备份失败:', error);
+    return null;
+  }
+}
+
+async function sendBackup(): Promise<{
+  success: boolean;
+  emailSent: boolean;
+  jsonExported: boolean;
+  dbCopied: boolean;
   errors: string[];
   backupTime: string;
-  persistenceMode: string;
 }> {
   const errors: string[] = [];
   let emailSent = false;
   let jsonExported = false;
-  let gitPushed = false;
+  let dbCopied = false;
 
   const now = new Date();
-  const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-  const timeStr = `${dateStr}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+  const timeStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+
+  console.log(`\n[Backup] ========== 开始备份 ${timeStr} ==========`);
 
   // 步骤1：导出 JSON
   const exportResult = exportToJson(timeStr);
@@ -212,54 +219,18 @@ async function sendBackup(): Promise<{
     errors.push(`JSON导出失败: ${exportResult.error}`);
   }
 
-  // 步骤2：发送邮件
-  const transporter = getTransporter();
-  if (transporter) {
-    try {
-      if (!fs.existsSync(dbPath)) {
-        errors.push('数据库文件不存在');
-      } else {
-        const attachments: any[] = [
-          {
-            filename: `dev-backup-${timeStr}.db`,
-            path: dbPath,
-            contentType: 'application/octet-stream'
-          }
-        ];
-
-        if (exportResult.success && exportResult.filePath) {
-          attachments.push({
-            filename: `data-${timeStr}.json`,
-            path: exportResult.filePath,
-            contentType: 'application/json'
-          });
-        }
-
-        await transporter.sendMail({
-          from: BACKUP_CONFIG.mail.from,
-          to: BACKUP_CONFIG.mail.to,
-          subject: `[${hasPersistence ? '每日' : '紧急'}备份] 行程系统 ${timeStr}${hasPersistence ? '' : '（无持久化存储）'}`,
-          text: `备份时间：${now.toLocaleString('zh-CN')}\n\n存储模式：${hasPersistence ? '持久化存储' : '容器临时存储（容器重启会丢失数据）'}\n数据库路径：${dbPath}\n\n附件：\n1. 数据库备份 (.db)\n2. 数据导出 (.json)`,
-          attachments
-        });
-
-        emailSent = true;
-        console.log(`[Backup] 邮件发送成功: ${timeStr}`);
-      }
-    } catch (error) {
-      errors.push(`邮件发送失败: ${error instanceof Error ? error.message : String(error)}`);
-      console.error('[Backup] 邮件发送失败:', error);
-    }
+  // 步骤2：复制 .db 文件到 backup 目录
+  const copyPath = copyBackupToProject(timeStr);
+  if (copyPath) {
+    dbCopied = true;
+  } else {
+    errors.push('数据库复制失败');
   }
 
-  // 步骤3：推送到 Git
-  if (jsonExported) {
-    const gitResult = pushToGit(timeStr);
-    if (gitResult.success) {
-      gitPushed = true;
-    } else {
-      errors.push(`Git推送失败: ${gitResult.error}`);
-    }
+  // 步骤3：发送邮件（包含 .db 和 .json）
+  emailSent = await sendEmailBackup(timeStr, exportResult.filePath);
+  if (!emailSent && BACKUP_CONFIG.mail.auth.pass) {
+    errors.push('邮件发送失败');
   }
 
   // 步骤4：清理旧备份
@@ -268,53 +239,70 @@ async function sendBackup(): Promise<{
   }
 
   lastBackupTime = now;
-  const success = emailSent || jsonExported;
-  
-  return { 
-    success, 
-    emailSent, 
-    jsonExported, 
-    gitPushed,
+  const success = jsonExported || dbCopied || emailSent;
+
+  const result = {
+    success,
+    emailSent,
+    jsonExported,
+    dbCopied,
     errors,
-    backupTime: now.toLocaleString('zh-CN'),
-    persistenceMode: hasPersistence ? '持久化存储' : '容器临时存储'
+    backupTime: now.toLocaleString('zh-CN')
   };
+
+  console.log(`[Backup] ========== 备份完成 ==========`);
+  console.log(`[Backup] JSON导出: ${jsonExported ? '✓' : '✗'}`);
+  console.log(`[Backup] DB复制: ${dbCopied ? '✓' : '✗'}`);
+  console.log(`[Backup] 邮件发送: ${emailSent ? '✓' : '✗'}`);
+  if (errors.length > 0) {
+    console.log(`[Backup] 错误: ${errors.join(', ')}`);
+  }
+  console.log('');
+
+  return result;
 }
 
 // 从备份恢复数据
 async function restoreFromBackup(dateStr: string): Promise<{ success: boolean; error?: string }> {
   try {
+    // 支持从 JSON 文件恢复
     const jsonFile = path.join(backupDataDir, `data-${dateStr}.json`);
-    if (!fs.existsSync(jsonFile)) {
-      return { success: false, error: `备份文件不存在: ${jsonFile}` };
+    
+    if (fs.existsSync(jsonFile)) {
+      const backupData = JSON.parse(fs.readFileSync(jsonFile, 'utf-8'));
+      const db = new Database(dbPath);
+
+      db.exec('DELETE FROM users; DELETE FROM appointments; DELETE FROM overdue_items; DELETE FROM overdue_periods; DELETE FROM performance;');
+
+      const insertUsers = db.prepare('INSERT INTO users (id, name, phone, password, role, createdAt) VALUES (?, ?, ?, ?, ?, ?)');
+      const insertAppointments = db.prepare('INSERT INTO appointments (id, customerName, phone, company, province, city, content, amount, type, courseType, status, invoicedAt, paidAt, teacherId, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      const insertOverdueItems = db.prepare('INSERT INTO overdue_items (id, item, createdAt) VALUES (?, ?, ?)');
+      const insertOverduePeriods = db.prepare('INSERT INTO overdue_periods (id, period, amount, createdAt) VALUES (?, ?, ?, ?)');
+      const insertPerformance = db.prepare('INSERT INTO performance (id, userId, amount, orderDate, invoiceDate, paymentDate, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)');
+
+      const insertAll = db.transaction(() => {
+        backupData.tables.users.forEach((user: any) => insertUsers.run(user.id, user.name, user.phone, user.password, user.role, user.createdAt));
+        backupData.tables.appointments.forEach((appt: any) => insertAppointments.run(appt.id, appt.customerName, appt.phone, appt.company, appt.province, appt.city, appt.content, appt.amount, appt.type, appt.courseType, appt.status, appt.invoicedAt, appt.paidAt, appt.teacherId, appt.createdAt));
+        backupData.tables.overdue_items.forEach((item: any) => insertOverdueItems.run(item.id, item.item, item.createdAt));
+        backupData.tables.overdue_periods.forEach((period: any) => insertOverduePeriods.run(period.id, period.period, period.amount, period.createdAt));
+        backupData.tables.performance.forEach((perf: any) => insertPerformance.run(perf.id, perf.userId, perf.amount, perf.orderDate, perf.invoiceDate, perf.paymentDate, perf.createdAt));
+      });
+
+      insertAll();
+      db.close();
+      console.log(`[Backup] 数据从JSON恢复成功: ${dateStr}`);
+      return { success: true };
     }
 
-    const backupData = JSON.parse(fs.readFileSync(jsonFile, 'utf-8'));
-    const db = new Database(dbPath);
+    // 支持从 .db 文件恢复
+    const dbFile = path.join(projectRoot, 'backup', `dev-backup-${dateStr}.db`);
+    if (fs.existsSync(dbFile)) {
+      fs.copyFileSync(dbFile, dbPath);
+      console.log(`[Backup] 数据库文件恢复成功: ${dateStr}`);
+      return { success: true };
+    }
 
-    // 清空现有数据并恢复
-    db.exec('DELETE FROM users; DELETE FROM appointments; DELETE FROM overdue_items; DELETE FROM overdue_periods; DELETE FROM performance;');
-
-    const insertUsers = db.prepare('INSERT INTO users (id, name, phone, password, role, createdAt) VALUES (?, ?, ?, ?, ?, ?)');
-    const insertAppointments = db.prepare('INSERT INTO appointments (id, customerName, phone, company, province, city, content, amount, type, courseType, status, invoicedAt, paidAt, teacherId, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-
-    const insertOverdueItems = db.prepare('INSERT INTO overdue_items (id, item, createdAt) VALUES (?, ?, ?)');
-    const insertOverduePeriods = db.prepare('INSERT INTO overdue_periods (id, period, amount, createdAt) VALUES (?, ?, ?, ?)');
-    const insertPerformance = db.prepare('INSERT INTO performance (id, userId, amount, orderDate, invoiceDate, paymentDate, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)');
-
-    const insertAll = db.transaction(() => {
-      backupData.tables.users.forEach((user: any) => insertUsers.run(user.id, user.name, user.phone, user.password, user.role, user.createdAt));
-      backupData.tables.appointments.forEach((appt: any) => insertAppointments.run(appt.id, appt.customerName, appt.phone, appt.company, appt.province, appt.city, appt.content, appt.amount, appt.type, appt.courseType, appt.status, appt.invoicedAt, appt.paidAt, appt.teacherId, appt.createdAt));
-      backupData.tables.overdue_items.forEach((item: any) => insertOverdueItems.run(item.id, item.item, item.createdAt));
-      backupData.tables.overdue_periods.forEach((period: any) => insertOverduePeriods.run(period.id, period.period, period.amount, period.createdAt));
-      backupData.tables.performance.forEach((perf: any) => insertPerformance.run(perf.id, perf.userId, perf.amount, perf.orderDate, perf.invoiceDate, perf.paymentDate, perf.createdAt));
-    });
-
-    insertAll();
-    db.close();
-
-    console.log(`[Backup] 数据恢复成功: ${dateStr}`);
-    return { success: true };
+    return { success: false, error: `备份文件不存在: ${jsonFile} 或 ${dbFile}` };
   } catch (error) {
     console.error('[Backup] 数据恢复失败:', error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
@@ -326,58 +314,30 @@ export function startBackupCron() {
     fs.mkdirSync(backupDataDir, { recursive: true });
   }
 
-  // 打印存储模式警告
-  if (!hasPersistence) {
-    console.warn('╔══════════════════════════════════════════════════════════════╗');
-    console.warn('║  ⚠️  警告：当前无持久化存储！                                 ║');
-    console.warn('║  数据保存在容器临时文件系统中，容器重启会丢失！                ║');
-    console.warn('║  建议：                                                       ║');
-    console.warn('║  1. 在 CloudBase 控制台配置持久化存储                          ║');
-    console.warn('║  2. 定时备份邮件和 Git（已启用）                               ║');
-    console.warn('║  3. 每30分钟自动备份一次（已启用）                             ║');
-    console.warn('╚══════════════════════════════════════════════════════════════╝');
-  }
+  // 打印配置
+  console.log('╔══════════════════════════════════════════════════════════════╗');
+  console.log('║  数据备份服务启动                                            ║');
+  console.log('╠══════════════════════════════════════════════════════════════╣');
+  console.log(`║  运行环境: ${isProduction ? '生产环境' : '开发环境'}`);
+  console.log(`║  云平台: ${isCloudBase ? 'CloudBase' : isEmas ? 'EMAS' : '本地'}`);
+  console.log(`║  数据库: ${dbPath}`);
+  console.log(`║  JSON备份: ${backupDataDir}`);
+  console.log(`║  邮件备份: ${BACKUP_CONFIG.mail.auth.pass ? '启用 → ' + BACKUP_CONFIG.mail.to : '未配置'}`);
+  console.log(`║  定时任务: ${BACKUP_CONFIG.cron} (每日凌晨2点)`);
+  console.log('╚══════════════════════════════════════════════════════════════╝');
 
   // 定时备份
   cron.schedule(BACKUP_CONFIG.cron, async () => {
-    console.log(`[Backup] 定时备份开始... (${hasPersistence ? '每日凌晨2点' : '每小时'})`);
-    const result = await sendBackup();
-    console.log('[Backup] 备份结果:', JSON.stringify({
-      success: result.success,
-      emailSent: result.emailSent,
-      jsonExported: result.jsonExported,
-      gitPushed: result.gitPushed,
-      errors: result.errors
-    }));
+    await sendBackup();
   }, {
     timezone: 'Asia/Shanghai'
   });
 
-  // 无持久化时增加30分钟自动备份
-  if (!hasPersistence && BACKUP_CONFIG.autoBackupInterval > 0) {
-    console.log(`[Backup] 启用每${BACKUP_CONFIG.autoBackupInterval}分钟自动备份`);
-    backupInterval = setInterval(async () => {
-      console.log('[Backup] 自动备份开始（30分钟间隔）...');
-      const result = await sendBackup();
-      console.log('[Backup] 自动备份结果:', result.success ? '成功' : '部分失败');
-    }, BACKUP_CONFIG.autoBackupInterval * 60 * 1000);
-  }
-
-  // 服务启动后立即执行一次备份
+  // 启动后立即执行一次备份
   setTimeout(async () => {
     console.log('[Backup] 启动后首次备份...');
     await sendBackup();
   }, 5000);
-
-  console.log(`[Backup] 配置摘要:`);
-  console.log(`  存储模式: ${hasPersistence ? '持久化存储' : '容器临时存储'}`);
-  console.log(`  定时备份: ${BACKUP_CONFIG.cron}`);
-  console.log(`  邮件通知: ${BACKUP_CONFIG.mail.to}`);
-  console.log(`  Git推送: ${BACKUP_CONFIG.enableGitPush ? '启用' : '禁用'}`);
-  console.log(`  JSON目录: ${backupDataDir}`);
-  if (!hasPersistence) {
-    console.log(`  自动备份: 每${BACKUP_CONFIG.autoBackupInterval}分钟`);
-  }
 }
 
-export { sendBackup, restoreFromBackup, lastBackupTime, hasPersistence, backupDataDir };
+export { sendBackup, restoreFromBackup, lastBackupTime, backupDataDir };
