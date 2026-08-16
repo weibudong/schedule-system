@@ -1,10 +1,11 @@
 import express from 'express';
-import { db } from '../db/index.js';
+import { getDb } from '../db/index.js';
 
 const router = express.Router();
 
 router.get('/', (req, res) => {
   const { startDate, endDate, filterType = 'orderDate', userId = '1', type } = req.query;
+  const db = getDb();
   
   const dateFieldMap: Record<string, string> = {
     orderDate: 'date',

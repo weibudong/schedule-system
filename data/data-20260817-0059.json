@@ -1,0 +1,98 @@
+{
+  "exportDate": "2026-08-16T16:59:56.136Z",
+  "exportTimezone": "Asia/Shanghai",
+  "sourcePath": "/app/api/dev.db",
+  "tables": {
+    "users": [
+      {
+        "id": "1",
+        "name": "兰天翔",
+        "phone": "111",
+        "password": "123",
+        "role": "admin"
+      },
+      {
+        "id": "2",
+        "name": "魏凯",
+        "phone": "222",
+        "password": "123",
+        "role": "admin"
+      },
+      {
+        "id": "3",
+        "name": "test1",
+        "phone": "333",
+        "password": "123",
+        "role": "sales"
+      }
+    ],
+    "appointments": [
+      {
+        "id": "1786899514226",
+        "userId": "1",
+        "date": "2026-08-17",
+        "timePeriod": "上午",
+        "company": "",
+        "type": "面谈",
+        "amount": 123,
+        "remark": "",
+        "status": "待审核",
+        "customerName": "12",
+        "paymentStatus": "未回款",
+        "invoiceStatus": "未开票",
+        "invoiceDate": null,
+        "paymentDate": null,
+        "createdAt": "2026-08-16 16:58:34",
+        "province": "北京",
+        "city": "北京",
+        "teacherId": "1",
+        "teacher": "兰天翔"
+      },
+      {
+        "id": "1786899525033",
+        "userId": "1",
+        "date": "2026-08-17",
+        "timePeriod": "上午",
+        "company": "",
+        "type": "面谈",
+        "amount": 1234,
+        "remark": "",
+        "status": "待审核",
+        "customerName": "123",
+        "paymentStatus": "未回款",
+        "invoiceStatus": "未开票",
+        "invoiceDate": null,
+        "paymentDate": null,
+        "createdAt": "2026-08-16 16:58:45",
+        "province": "天津",
+        "city": "天津",
+        "teacherId": "2",
+        "teacher": "魏凯"
+      },
+      {
+        "id": "1786899557337",
+        "userId": "all",
+        "date": "2026-08-17",
+        "timePeriod": "上午",
+        "company": "",
+        "type": "面谈",
+        "amount": 123,
+        "remark": "",
+        "status": "待审核",
+        "customerName": "2134",
+        "paymentStatus": "未回款",
+        "invoiceStatus": "未开票",
+        "invoiceDate": null,
+        "paymentDate": null,
+        "createdAt": "2026-08-16 16:59:17",
+        "province": "河北",
+        "city": "石家庄",
+        "teacherId": "3",
+        "teacher": "test1"
+      }
+    ],
+    "overdue_items": [],
+    "overdue_periods": [],
+    "performance": []
+  }
+}

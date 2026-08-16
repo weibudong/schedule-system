@@ -12,7 +12,23 @@ const __dirname = path.dirname(__filename);
 const dbPath = path.join(__dirname, '..', 'dev.db');
 console.log('[DB] 数据库路径:', dbPath);
 
-export const db = new Database(dbPath);
+let db = new Database(dbPath);
+
+export function getDb() {
+  return db;
+}
+
+export function reconnectDb() {
+  console.log('[DB] 重新连接数据库:', dbPath);
+  try {
+    db.close();
+  } catch (e) {
+    // 忽略关闭错误
+  }
+  db = new Database(dbPath);
+  console.log('[DB] 数据库重连成功');
+  return db;
+}
 
 export function initDb() {
   db.exec(`

@@ -10,19 +10,18 @@ WORKDIR /app
 # 先复制依赖配置文件
 COPY package*.json ./
 
-# 使用腾讯云 npm 镜像源加速，安装所有依赖（包括 tsx）
+# 使用腾讯云 npm 镜像源加速，安装所有依赖
 RUN npm config set registry https://mirrors.cloud.tencent.com/npm/ && \
     npm install && \
     npm cache clean --force
 
-# 复制源代码
+# 复制源代码（前端已构建好的 dist 目录和后端代码）
 COPY . .
 
-# 构建前端
-RUN npm run build
-
-# 创建持久化目录
-RUN mkdir -p /mnt/data && chmod 777 /mnt/data
+# 创建持久化目录和必要目录
+RUN mkdir -p /mnt/data && chmod 777 /mnt/data && \
+    mkdir -p /app/api/data && \
+    mkdir -p /app/api/backup
 
 # 暴露端口
 EXPOSE 80

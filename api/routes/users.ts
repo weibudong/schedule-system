@@ -1,10 +1,11 @@
 import express from 'express';
-import { db } from '../db/index.js';
+import { getDb } from '../db/index.js';
 
 const router = express.Router();
 
 router.post('/login', (req, res) => {
   const { phone, password } = req.body;
+  const db = getDb();
   
   const user = db.prepare('SELECT * FROM users WHERE phone = ? AND password = ?').get(phone, password);
   
@@ -27,6 +28,7 @@ router.post('/login', (req, res) => {
 });
 
 router.get('/list', (req, res) => {
+  const db = getDb();
   const users = db.prepare('SELECT id, name, phone, role FROM users').all();
   res.json({ success: true, users });
 });
@@ -39,6 +41,7 @@ router.post('/', (req, res) => {
     return;
   }
   
+  const db = getDb();
   const existingUser = db.prepare('SELECT * FROM users WHERE phone = ?').get(phone);
   if (existingUser) {
     res.json({ success: false, message: '该手机号已注册' });

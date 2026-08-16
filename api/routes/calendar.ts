@@ -1,10 +1,11 @@
 import express from 'express';
-import { db } from '../db/index.js';
+import { getDb } from '../db/index.js';
 
 const router = express.Router();
 
 router.get('/', (req, res) => {
   const { month, userId = '1' } = req.query;
+  const db = getDb();
   
   let query = 'SELECT * FROM appointments';
   const params: any[] = [];
@@ -58,6 +59,7 @@ router.get('/', (req, res) => {
 
 router.post('/', (req, res) => {
   const { date, timePeriod, company, type, amount, remark, status, customerName, paymentStatus, userId = '1', teacherId } = req.body;
+  const db = getDb();
   
   const teacherUser = db.prepare('SELECT name FROM users WHERE id = ?').get(teacherId);
   const teacherName = teacherUser?.name || '';
@@ -94,6 +96,7 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   const { id } = req.params;
   const { date, timePeriod, company, type, amount, remark, status, customerName, paymentStatus, teacherId, invoiceStatus, invoiceDate, paymentDate } = req.body;
+  const db = getDb();
   
   const existing = db.prepare('SELECT * FROM appointments WHERE id = ?').get(id);
   
@@ -153,6 +156,7 @@ router.put('/:id', (req, res) => {
 
 router.delete('/:id', (req, res) => {
   const { id } = req.params;
+  const db = getDb();
   
   const existing = db.prepare('SELECT * FROM appointments WHERE id = ?').get(id);
   

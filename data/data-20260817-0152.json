@@ -1,0 +1,77 @@
+{
+  "exportDate": "2026-08-16T17:52:27.613Z",
+  "exportTimezone": "Asia/Shanghai",
+  "sourcePath": "/Users/wk/Desktop/1111/api/dev.db",
+  "tables": {
+    "users": [
+      {
+        "id": "1",
+        "name": "兰天翔",
+        "phone": "111",
+        "password": "123",
+        "role": "admin"
+      },
+      {
+        "id": "2",
+        "name": "魏凯",
+        "phone": "222",
+        "password": "123",
+        "role": "admin"
+      },
+      {
+        "id": "3",
+        "name": "test3",
+        "phone": "333",
+        "password": "123",
+        "role": "sales"
+      }
+    ],
+    "appointments": [
+      {
+        "id": "1786901256001",
+        "userId": "1",
+        "date": "2026-08-17",
+        "timePeriod": "上午",
+        "company": "",
+        "type": "面谈",
+        "amount": 3123,
+        "remark": "",
+        "status": "待审核",
+        "customerName": "213",
+        "paymentStatus": "未回款",
+        "invoiceStatus": "未开票",
+        "invoiceDate": null,
+        "paymentDate": null,
+        "createdAt": "2026-08-16 17:27:36",
+        "province": "北京",
+        "city": "北京",
+        "teacherId": "1",
+        "teacher": "兰天翔"
+      },
+      {
+        "id": "1786901504861",
+        "userId": "1",
+        "date": "2026-08-17",
+        "timePeriod": "上午",
+        "company": "",
+        "type": "面谈",
+        "amount": 4,
+        "remark": "",
+        "status": "待审核",
+        "customerName": "2343",
+        "paymentStatus": "未回款",
+        "invoiceStatus": "未开票",
+        "invoiceDate": null,
+        "paymentDate": null,
+        "createdAt": "2026-08-16 17:31:44",
+        "province": "天津",
+        "city": "天津",
+        "teacherId": "2",
+        "teacher": "魏凯"
+      }
+    ],
+    "overdue_items": [],
+    "overdue_periods": [],
+    "performance": []
+  }
+}

@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Plus, UserPlus, Database } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, UserPlus, Database, Upload } from 'lucide-react';
 import { calendarApi, userApi } from '../api';
 import { useUser } from '../context/UserContext';
 import type { Appointment, CalendarSummary } from '../types';
@@ -19,6 +19,8 @@ export default function CurrentWork() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const { currentUser, selectedUserId, users, setSelectedUserId, logout } = useUser();
 
@@ -146,7 +148,7 @@ export default function CurrentWork() {
         const parts = [];
         if (details.emailSent) parts.push('✅ 邮件已发送');
         if (details.jsonExported) parts.push('✅ 数据已导出JSON');
-        if (details.gitPushed) parts.push('✅ Git推送成功');
+        if (details.dbCopied) parts.push('✅ 数据库已复制');
         const errorMsg = (details.errors || []).filter((e: string) => !e.includes('disabled'));
         if (errorMsg.length > 0) {
           alert(`备份完成，但有部分失败：\n\n${parts.join('\n')}\n\n⚠️ ${errorMsg.join('\n')}`);
@@ -160,6 +162,78 @@ export default function CurrentWork() {
       alert('备份请求失败，请检查网络连接');
     } finally {
       setIsBackingUp(false);
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 验证文件类型
+    if (!file.name.endsWith('.db')) {
+      alert('请选择 .db 数据库文件');
+      e.target.value = '';
+      return;
+    }
+
+    // 确认上传
+    if (!confirm(`确定要上传数据库文件 "${file.name}" 吗？\n这将覆盖生产环境的数据库！`)) {
+      e.target.value = '';
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      // 读取文件为 Base64
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const dbFile = event.target?.result as string;
+        
+        try {
+          console.log('[Upload] 准备上传文件:', file.name, '大小:', file.size, 'bytes');
+          
+          const res = await fetch('/api/backup/upload-db', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              dbFile: dbFile.split(',')[1] || dbFile,
+              fileName: file.name
+            })
+          });
+          
+          console.log('[Upload] 响应状态:', res.status);
+          const data = await res.json();
+          console.log('[Upload] 响应数据:', data);
+          
+          if (res.ok && data.success) {
+            const sizeMB = (data.details?.fileSize / 1024 / 1024).toFixed(2);
+            alert(`✅ 数据库上传成功！\n\n文件大小：${sizeMB}MB\n文件名：${data.details?.fileName}\n\n请刷新页面查看更新后的数据。`);
+            refreshData();
+          } else {
+            alert(`❌ 上传失败（状态码: ${res.status}）\n\n错误信息：${data.error || '未知错误'}`);
+          }
+        } catch (error) {
+          console.error('[Upload] 请求失败:', error);
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          alert(`❌ 上传请求失败\n\n错误信息：${errorMsg}\n\n请确保：\n1. 后端服务已启动\n2. /api/backup/upload-db 接口存在\n3. 网络连接正常`);
+        } finally {
+          setIsUploading(false);
+        }
+      };
+      reader.onerror = () => {
+        alert('❌ 读取文件失败，请重试');
+        setIsUploading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      alert('❌ 读取文件失败');
+      setIsUploading(false);
+    } finally {
+      e.target.value = '';
     }
   };
 
@@ -227,6 +301,21 @@ export default function CurrentWork() {
                 >
                   <Database className="w-5 h-5" />
                 </button>
+                <button 
+                  onClick={handleUploadClick}
+                  disabled={isUploading}
+                  className={`p-2 rounded-lg ${isUploading ? 'text-gray-400 bg-gray-100' : 'text-orange-600 hover:bg-orange-50'}`}
+                  title="上传数据库文件更新数据"
+                >
+                  <Upload className="w-5 h-5" />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".db"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
                 <button 
                   onClick={() => setIsAddUserModalOpen(true)}
                   className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
