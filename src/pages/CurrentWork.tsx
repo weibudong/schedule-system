@@ -142,7 +142,17 @@ export default function CurrentWork() {
       const res = await fetch('/api/backup', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        alert('备份邮件已发送成功！');
+        const details = data.details || {};
+        const parts = [];
+        if (details.emailSent) parts.push('✅ 邮件已发送');
+        if (details.jsonExported) parts.push('✅ 数据已导出JSON');
+        if (details.gitPushed) parts.push('✅ Git推送成功');
+        const errorMsg = (details.errors || []).filter((e: string) => !e.includes('disabled'));
+        if (errorMsg.length > 0) {
+          alert(`备份完成，但有部分失败：\n\n${parts.join('\n')}\n\n⚠️ ${errorMsg.join('\n')}`);
+        } else {
+          alert(`备份成功！\n\n${parts.join('\n')}`);
+        }
       } else {
         alert('备份失败：' + (data.error || '未知错误'));
       }

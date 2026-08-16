@@ -46,8 +46,17 @@ app.use('/api/users', userRoutes)
  */
 app.post('/api/backup', async (req: Request, res: Response) => {
   try {
-    await sendBackup();
-    res.json({ success: true, message: 'Backup triggered' });
+    const result = await sendBackup();
+    res.json({ 
+      success: result.success, 
+      message: result.success ? '备份完成' : '备份部分失败',
+      details: {
+        emailSent: result.emailSent,
+        jsonExported: result.jsonExported,
+        gitPushed: result.gitPushed,
+        errors: result.errors
+      }
+    });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
   }
