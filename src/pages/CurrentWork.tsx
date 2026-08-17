@@ -23,6 +23,7 @@ export default function CurrentWork() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const { currentUser, selectedUserId, users, setSelectedUserId, logout } = useUser();
+  const isSpecialUser = currentUser?.phone === '13026151270';
 
   useEffect(() => {
     const monthStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
@@ -293,29 +294,35 @@ export default function CurrentWork() {
             </button>
             {currentUser?.role === 'admin' && (
               <>
-                <button 
-                  onClick={handleBackup}
-                  disabled={isBackingUp}
-                  className={`p-2 rounded-lg ${isBackingUp ? 'text-gray-400 bg-gray-100' : 'text-purple-600 hover:bg-purple-50'}`}
-                  title="备份数据到邮箱"
-                >
-                  <Database className="w-5 h-5" />
-                </button>
-                <button 
-                  onClick={handleUploadClick}
-                  disabled={isUploading}
-                  className={`p-2 rounded-lg ${isUploading ? 'text-gray-400 bg-gray-100' : 'text-orange-600 hover:bg-orange-50'}`}
-                  title="上传数据库文件更新数据"
-                >
-                  <Upload className="w-5 h-5" />
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".db"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
+                {isSpecialUser && (
+                  <button 
+                    onClick={handleBackup}
+                    disabled={isBackingUp}
+                    className={`p-2 rounded-lg ${isBackingUp ? 'text-gray-400 bg-gray-100' : 'text-purple-600 hover:bg-purple-50'}`}
+                    title="备份数据到邮箱"
+                  >
+                    <Database className="w-5 h-5" />
+                  </button>
+                )}
+                {isSpecialUser && (
+                  <button 
+                    onClick={handleUploadClick}
+                    disabled={isUploading}
+                    className={`p-2 rounded-lg ${isUploading ? 'text-gray-400 bg-gray-100' : 'text-orange-600 hover:bg-orange-50'}`}
+                    title="上传数据库文件更新数据"
+                  >
+                    <Upload className="w-5 h-5" />
+                  </button>
+                )}
+                {isSpecialUser && (
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".db"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                )}
                 <button 
                   onClick={() => setIsAddUserModalOpen(true)}
                   className="p-2 text-green-600 hover:bg-green-50 rounded-lg"

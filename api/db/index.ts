@@ -149,11 +149,13 @@ export function initDb() {
 
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
   if (userCount === 0) {
-    db.prepare('INSERT INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('1', '兰天翔', '111', '123', 'admin');
-    db.prepare('INSERT INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('2', '魏凯', '222', '123', 'admin');
+    db.prepare('INSERT INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('1', '魏凯', '13026151270', '123', 'admin');
+    db.prepare('INSERT INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('2', '熊娟', '222', '123', 'admin');
+    db.prepare('INSERT INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('3', '兰天翔', '333', '123', 'sales');
   } else {
-    db.prepare('UPDATE users SET phone = ?, password = ?, role = ? WHERE id = ?').run('111', '123', 'admin', '1');
-    db.prepare('INSERT OR IGNORE INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('2', '魏凯', '222', '123', 'admin');
+    db.prepare('UPDATE users SET phone = ?, password = ?, role = ? WHERE id = ?').run('13026151270', '123', 'admin', '1');
+    db.prepare('INSERT OR IGNORE INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('2', '熊娟', '222', '123', 'admin');
+    db.prepare('INSERT OR IGNORE INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('3', '兰天翔', '333', '123', 'sales');
   }
 
   // 行程数据初始化已注释，用户要求清空行程数据
