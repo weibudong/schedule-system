@@ -394,12 +394,17 @@ export function startBackupCron() {
   console.log(`║  定时任务: ${BACKUP_CONFIG.cron} (每日凌晨2点)`);
   console.log('╚══════════════════════════════════════════════════════════════╝');
 
-  // 定时备份
-  cron.schedule(BACKUP_CONFIG.cron, async () => {
-    await sendBackup();
-  }, {
-    timezone: 'Asia/Shanghai'
-  });
+  // 定时备份（仅生产环境）
+  if (isProduction) {
+    cron.schedule(BACKUP_CONFIG.cron, async () => {
+      await sendBackup();
+    }, {
+      timezone: 'Asia/Shanghai'
+    });
+    console.log(`[Backup] 定时任务已启动: ${BACKUP_CONFIG.cron}`);
+  } else {
+    console.log('[Backup] 开发环境，跳过定时备份');
+  }
 
   // 启动后测试邮件连接（异步，不阻塞启动）
   if (mailConfigured) {
@@ -412,11 +417,8 @@ export function startBackupCron() {
     }, 2000);
   }
 
-  // 启动后立即执行一次备份
-  setTimeout(async () => {
-    console.log('[Backup] 启动后首次备份...');
-    await sendBackup();
-  }, 5000);
+  console.log('[Backup] 启动后首次备份已禁用，将在定时任务触发时执行');
+  console.log('[Backup] 手动备份接口仍可使用: POST /api/backup');
 }
 
 export { sendBackup, restoreFromBackup, lastBackupTime, backupDataDir };

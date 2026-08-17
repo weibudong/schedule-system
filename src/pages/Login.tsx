@@ -63,11 +63,6 @@ export default function Login() {
             登录
           </button>
         </form>
-
-        <div className="mt-6 text-center text-gray-400 text-sm">
-          <p>管理员：手机号 111，密码 123</p>
-          <p>业务员：手机号 222，密码 123</p>
-        </div>
       </div>
     </div>
   );
