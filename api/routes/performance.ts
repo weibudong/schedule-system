@@ -15,7 +15,7 @@ router.get('/', (req, res) => {
   
   const dateField = dateFieldMap[filterType as string] || 'date';
   
-  let query = `SELECT id, teacherId as userId, teacher, date, timePeriod, invoiceDate, paymentDate, amount, company, type, customerName, paymentStatus, invoiceStatus, province, city FROM appointments`;
+  let query = `SELECT id, teacherId as userId, teacherId, teacher, date, timePeriod, invoiceDate, paymentDate, amount, company, type, customerName, paymentStatus, invoiceStatus, invoiceNo, province, city, status, remark FROM appointments`;
   const params: any[] = [];
   
   if (userId !== 'all') {

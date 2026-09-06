@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Plus, UserPlus, Database, Upload } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, UserPlus, Database, Upload, Sunrise, Sun, Moon } from 'lucide-react';
 import { calendarApi, userApi } from '../api';
 import { useUser } from '../context/UserContext';
 import type { Appointment, CalendarSummary } from '../types';
@@ -8,6 +8,12 @@ import AppointmentModal from '../components/AppointmentModal';
 import AddUserModal from '../components/AddUserModal';
 
 const weekDays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+const timePeriodIcon = (period?: string) => {
+  if (period === '下午') return <Sun size={10} className="shrink-0" />;
+  if (period === '晚上') return <Moon size={10} className="shrink-0" />;
+  return <Sunrise size={10} className="shrink-0" />;
+};
 
 export default function CurrentWork() {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -100,6 +106,12 @@ export default function CurrentWork() {
     setSelectedAppointment(null);
     const today = new Date();
     setDefaultDate(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`);
+    setIsModalOpen(true);
+  };
+
+  const handleAddForDate = (date: string) => {
+    setSelectedAppointment(null);
+    setDefaultDate(date);
     setIsModalOpen(true);
   };
 
@@ -286,8 +298,10 @@ export default function CurrentWork() {
                 <option key={user.id} value={user.id}>{user.name}</option>
               ))}
             </select>
-            <button 
+            <button
               onClick={handleAdd}
+              title="新增行程"
+              aria-label="新增行程"
               className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
             >
               <Plus className="w-5 h-5" />
@@ -325,6 +339,8 @@ export default function CurrentWork() {
                 )}
                 <button 
                   onClick={() => setIsAddUserModalOpen(true)}
+                  title="新增用户"
+                  aria-label="新增用户"
                   className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
                 >
                   <UserPlus className="w-5 h-5" />
@@ -357,13 +373,16 @@ export default function CurrentWork() {
           return (
             <div
               key={day.fullDate}
+              onClick={dayAppointments.length === 0 ? () => handleAddForDate(day.fullDate) : undefined}
+              role={dayAppointments.length === 0 ? 'button' : undefined}
+              aria-label={dayAppointments.length === 0 ? `添加 ${day.fullDate} 行程` : undefined}
               className={`min-h-[80px] p-1 border border-gray-100 rounded-lg ${
                 day.isCurrentMonth
                   ? isToday
                     ? 'bg-blue-50 border-blue-200'
                     : 'bg-white'
                   : 'bg-gray-50'
-              }`}
+              } ${dayAppointments.length === 0 ? 'cursor-pointer' : ''}`}
             >
               <div
                 className={`text-xs text-center py-1 ${
@@ -383,13 +402,16 @@ export default function CurrentWork() {
                     <div
                       key={app.id}
                       onClick={() => handleEdit(app)}
-                      className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer transition-colors ${
+                      role="button"
+                      aria-label={`查看行程 ${app.customerName || app.company}`}
+                      className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer transition-colors flex items-center gap-0.5 ${
                         isPaid
                           ? 'bg-green-100 text-green-700 hover:bg-green-200 active:bg-green-300'
                           : 'bg-red-100 text-red-700 hover:bg-red-200 active:bg-red-300'
                       }`}
                     >
-                      {(app.province || app.city) ? `${app.province || ''}${app.city || ''} ` : ''}{app.customerName || app.company}
+                      {timePeriodIcon(app.timePeriod)}
+                      <span className="truncate">{(app.province || app.city) ? `${app.province || ''}${app.city || ''} ` : ''}{app.customerName || app.company}</span>
                     </div>
                   );
                 })}
@@ -433,6 +455,7 @@ export default function CurrentWork() {
       )}
 
       <AppointmentModal
+        key={`${isModalOpen}-${defaultDate}-${selectedAppointment?.id || 'new'}`}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         appointment={selectedAppointment}

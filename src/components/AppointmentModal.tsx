@@ -37,6 +37,7 @@ export default function AppointmentModal({
     customerName: '',
     paymentStatus: '未回款',
     invoiceStatus: '未开票',
+    invoiceNo: '',
     invoiceDate: '',
     paymentDate: '',
     province: '',
@@ -44,6 +45,9 @@ export default function AppointmentModal({
   });
 
   const [isEditing, setIsEditing] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'invoice' | 'payment' | 'invoiceNo' | null>(null);
+  const [actionDate, setActionDate] = useState('');
+  const [actionInvoiceNo, setActionInvoiceNo] = useState('');
 
   const [errors, setErrors] = useState({
     customerName: '',
@@ -59,8 +63,8 @@ export default function AppointmentModal({
       isValid = false;
     }
 
-    if (!formData.amount || formData.amount <= 0) {
-      newErrors.amount = '课程价格为必填项且必须大于0';
+    if (isNaN(formData.amount) || formData.amount < 0) {
+      newErrors.amount = '课程价格不能为负数';
       isValid = false;
     }
 
@@ -82,12 +86,14 @@ export default function AppointmentModal({
         customerName: appointment.customerName || appointment.company,
         paymentStatus: (appointment as any).paymentStatus || '未回款',
         invoiceStatus: (appointment as any).invoiceStatus || '未开票',
+        invoiceNo: (appointment as any).invoiceNo || '',
         invoiceDate: (appointment as any).invoiceDate || '',
         paymentDate: (appointment as any).paymentDate || '',
         province: (appointment as any).province || '',
         city: (appointment as any).city || '',
       });
       setIsEditing(false);
+      setPendingAction(null);
     } else if (defaultDate) {
       setFormData({
         date: defaultDate,
@@ -101,12 +107,14 @@ export default function AppointmentModal({
         customerName: '',
         paymentStatus: '未回款',
         invoiceStatus: '未开票',
+        invoiceNo: '',
         invoiceDate: '',
         paymentDate: '',
         province: '',
         city: '',
       });
       setIsEditing(false);
+      setPendingAction(null);
     } else {
       setFormData({
         date: new Date().toISOString().split('T')[0],
@@ -120,6 +128,7 @@ export default function AppointmentModal({
         customerName: '',
         paymentStatus: '未回款',
         invoiceStatus: '未开票',
+        invoiceNo: '',
         invoiceDate: '',
         paymentDate: '',
         province: '',
@@ -144,15 +153,38 @@ export default function AppointmentModal({
     }
   };
 
-  const handlePayment = () => {
-    if (appointment?.id) {
+  const openActionPanel = (action: 'invoice' | 'payment' | 'invoiceNo') => {
+    setPendingAction(action);
+    setActionDate(new Date().toISOString().split('T')[0]);
+    setActionInvoiceNo(formData.invoiceNo || '');
+  };
+
+  const confirmAction = () => {
+    if (!appointment?.id || !pendingAction) return;
+    if (pendingAction === 'invoice') {
+      onSave({
+        id: appointment.id,
+        ...formData,
+        invoiceStatus: '已开票',
+        invoiceDate: actionDate,
+        invoiceNo: actionInvoiceNo.trim(),
+      });
+    } else if (pendingAction === 'payment') {
       onSave({
         id: appointment.id,
         ...formData,
         paymentStatus: '已回款',
+        paymentDate: actionDate,
       });
-      onClose();
+    } else {
+      onSave({
+        id: appointment.id,
+        ...formData,
+        invoiceNo: actionInvoiceNo.trim(),
+      });
     }
+    setPendingAction(null);
+    onClose();
   };
 
   if (!isOpen) return null;
@@ -171,7 +203,7 @@ export default function AppointmentModal({
         onClick={onClose}
       />
       <div className="relative bg-white w-full sm:w-[400px] max-h-[calc(100vh-4rem)] overflow-y-auto rounded-t-2xl sm:rounded-2xl">
-        <div className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">
+        <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">
           <div className="font-semibold">
             {appointment ? `查看行程 No:${appointment.id}` : '添加行程'}
           </div>
@@ -293,9 +325,10 @@ export default function AppointmentModal({
                   <span className="text-gray-400">¥</span>
                   <input
                     type="number"
-                    value={formData.amount || ''}
+                    value={formData.amount}
                     onChange={(e) => {
-                      setFormData(prev => ({ ...prev, amount: Number(e.target.value) }));
+                      const val = e.target.value;
+                      setFormData(prev => ({ ...prev, amount: val === '' ? 0 : Number(val) }));
                       if (errors.amount) setErrors(prev => ({ ...prev, amount: '' }));
                     }}
                     disabled={isFieldDisabled}
@@ -343,6 +376,20 @@ export default function AppointmentModal({
                   </span>
                 </div>
               </div>
+              {formData.invoiceStatus === '已开票' && (
+                <div className="flex items-center gap-3 mt-1">
+                  <span className="text-sm text-gray-500 w-20"></span>
+                  <span className="text-xs text-gray-400">发票号: {formData.invoiceNo || '未填写'}</span>
+                  {currentUser?.role === 'admin' && (
+                    <button
+                      onClick={() => openActionPanel('invoiceNo')}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      修改
+                    </button>
+                  )}
+                </div>
+              )}
               {formData.invoiceDate && (
                 <div className="flex items-center gap-3 mt-1">
                   <span className="text-sm text-gray-500 w-20"></span>
@@ -361,7 +408,51 @@ export default function AppointmentModal({
           
         </div>
 
-        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-4 py-4">
+        <div className="sticky bottom-0 z-10 bg-white border-t border-gray-100 px-4 py-4">
+          {pendingAction && (
+            <div className="mb-3 p-3 bg-gray-50 rounded-lg space-y-2">
+              <div className="text-sm font-medium text-gray-700">
+                {pendingAction === 'invoice' ? '确认开票' : pendingAction === 'payment' ? '确认回款' : '修改发票号'}
+              </div>
+              {pendingAction !== 'invoiceNo' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 w-14 shrink-0">{pendingAction === 'invoice' ? '开票日期' : '回款日期'}</span>
+                  <input
+                    type="date"
+                    value={actionDate}
+                    onChange={(e) => setActionDate(e.target.value)}
+                    className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+                  />
+                </div>
+              )}
+              {pendingAction !== 'payment' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 w-14 shrink-0">发票号</span>
+                  <input
+                    type="text"
+                    value={actionInvoiceNo}
+                    onChange={(e) => setActionInvoiceNo(e.target.value)}
+                    placeholder="选填"
+                    className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+                  />
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={confirmAction}
+                  className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                >
+                  确认
+                </button>
+                <button
+                  onClick={() => setPendingAction(null)}
+                  className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 transition-colors"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
           <div className="flex gap-2 flex-wrap">
             {appointment ? (
               <>
@@ -384,14 +475,7 @@ export default function AppointmentModal({
                 {currentUser?.role === 'admin' && (
                   <>
                     <button
-                      onClick={() => {
-                        onSave({
-                          id: appointment.id,
-                          ...formData,
-                          invoiceStatus: '已开票',
-                        });
-                        onClose();
-                      }}
+                      onClick={() => openActionPanel('invoice')}
                       disabled={formData.invoiceStatus === '已开票'}
                       className={`flex-1 min-w-[80px] py-2.5 rounded-lg font-medium transition-colors ${
                         formData.invoiceStatus === '已开票'
@@ -402,14 +486,7 @@ export default function AppointmentModal({
                       已开票
                     </button>
                     <button
-                      onClick={() => {
-                        onSave({
-                          id: appointment.id,
-                          ...formData,
-                          paymentStatus: '已回款',
-                        });
-                        onClose();
-                      }}
+                      onClick={() => openActionPanel('payment')}
                       disabled={formData.paymentStatus === '已回款'}
                       className={`flex-1 min-w-[80px] py-2.5 rounded-lg font-medium transition-colors ${
                         formData.paymentStatus === '已回款'
@@ -426,6 +503,7 @@ export default function AppointmentModal({
                             id: appointment.id,
                             ...formData,
                             paymentStatus: '未回款',
+                            paymentDate: '',
                           });
                           onClose();
                         }}

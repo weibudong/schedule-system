@@ -12,6 +12,7 @@ export interface Appointment {
   customerName: string;
   paymentStatus: string;
   invoiceStatus: string;
+  invoiceNo?: string;
   invoiceDate?: string;
   paymentDate?: string;
   province?: string;
@@ -37,6 +38,7 @@ export interface PerformanceItem {
   amount: number;
   bonus: number;
   company: string;
+  type: string;
 }
 
 export interface CalendarResponse {

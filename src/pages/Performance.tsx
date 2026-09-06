@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { performanceApi } from '../api';
+import { performanceApi, calendarApi } from '../api';
 import { useUser } from '../context/UserContext';
-import type { PerformanceItem } from '../types';
+import type { PerformanceItem, Appointment } from '../types';
+import AppointmentModal from '../components/AppointmentModal';
 
 export default function Performance() {
   const now = new Date();
@@ -18,6 +19,9 @@ export default function Performance() {
   const [performanceList, setPerformanceList] = useState<PerformanceItem[]>([]);
   const [triggerSearch, setTriggerSearch] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'unpaid' | 'invoiced' | 'uninvoiced'>('all');
   const [stats, setStats] = useState({
     paidCount: 0,
     unpaidCount: 0,
@@ -41,6 +45,60 @@ export default function Performance() {
     return amount.toLocaleString();
   };
 
+  // 状态卡片筛选：与后端统计口径一致（非已回款即未回款，非已开票即未开票）
+  const filteredList = performanceList.filter((item) => {
+    const data = item as any;
+    if (statusFilter === 'paid') return data.paymentStatus === '已回款';
+    if (statusFilter === 'unpaid') return data.paymentStatus !== '已回款';
+    if (statusFilter === 'invoiced') return data.invoiceStatus === '已开票';
+    if (statusFilter === 'uninvoiced') return data.invoiceStatus !== '已开票';
+    return true;
+  });
+
+  const statusCards = [
+    { key: 'paid' as const, label: '已回款', count: stats.paidCount, base: 'bg-green-50', labelCls: 'text-green-600', countCls: 'text-green-700', activeRing: 'ring-2 ring-green-500', hoverRing: 'hover:ring-2 hover:ring-green-200' },
+    { key: 'unpaid' as const, label: '未回款', count: stats.unpaidCount, base: 'bg-orange-50', labelCls: 'text-orange-600', countCls: 'text-orange-700', activeRing: 'ring-2 ring-orange-500', hoverRing: 'hover:ring-2 hover:ring-orange-200' },
+    { key: 'invoiced' as const, label: '已开票', count: stats.invoicedCount, base: 'bg-blue-50', labelCls: 'text-blue-600', countCls: 'text-blue-700', activeRing: 'ring-2 ring-blue-500', hoverRing: 'hover:ring-2 hover:ring-blue-200' },
+    { key: 'uninvoiced' as const, label: '未开票', count: stats.uninvoicedCount, base: 'bg-gray-50', labelCls: 'text-gray-600', countCls: 'text-gray-700', activeRing: 'ring-2 ring-gray-500', hoverRing: 'hover:ring-2 hover:ring-gray-300' },
+  ];
+
+  const openAppointment = (item: PerformanceItem) => {
+    const data = item as any;
+    setSelectedAppointment({
+      id: item.id,
+      userId: item.userId,
+      date: data.date || '',
+      timePeriod: data.timePeriod || '上午',
+      company: item.company || '',
+      type: item.type || '面谈',
+      teacherId: data.teacherId || item.userId || '',
+      amount: item.amount,
+      remark: data.remark || '',
+      status: data.status || '待审核',
+      customerName: data.customerName || item.company || '',
+      paymentStatus: data.paymentStatus || '未回款',
+      invoiceStatus: data.invoiceStatus || '未开票',
+      invoiceNo: data.invoiceNo || '',
+      invoiceDate: data.invoiceDate || '',
+      paymentDate: data.paymentDate || '',
+      province: data.province || '',
+      city: data.city || '',
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleModalSave = (data: Partial<Appointment>) => {
+    if (data.id) {
+      calendarApi.update(data.id, data).then(() => setTriggerSearch(prev => !prev));
+    } else {
+      calendarApi.create({ ...data, userId: selectedUserId } as any).then(() => setTriggerSearch(prev => !prev));
+    }
+  };
+
+  const handleModalDelete = (id: string) => {
+    calendarApi.delete(id).then(() => setTriggerSearch(prev => !prev));
+  };
+
   const filterOptions = [
     { value: 'orderDate', label: '按订单日期' },
     { value: 'invoiceDate', label: '按开票日期' },
@@ -60,6 +118,8 @@ export default function Performance() {
           </Link>
           <div
             onClick={() => setShowLogoutConfirm(true)}
+            role="button"
+            aria-label="退出登录"
             className="flex flex-col items-center text-gray-400 cursor-pointer hover:text-gray-600"
           >
             <span className="text-xs">{currentUser?.name}</span>
@@ -167,22 +227,16 @@ export default function Performance() {
         </div>
         
         <div className="grid grid-cols-4 gap-3 mt-3">
-          <div className="bg-green-50 rounded-lg p-3">
-            <div className="text-xs text-green-600">已回款</div>
-            <div className="text-lg font-bold text-green-700">{stats.paidCount}</div>
-          </div>
-          <div className="bg-orange-50 rounded-lg p-3">
-            <div className="text-xs text-orange-600">未回款</div>
-            <div className="text-lg font-bold text-orange-700">{stats.unpaidCount}</div>
-          </div>
-          <div className="bg-blue-50 rounded-lg p-3">
-            <div className="text-xs text-blue-600">已开票</div>
-            <div className="text-lg font-bold text-blue-700">{stats.invoicedCount}</div>
-          </div>
-          <div className="bg-gray-50 rounded-lg p-3">
-            <div className="text-xs text-gray-600">未开票</div>
-            <div className="text-lg font-bold text-gray-700">{stats.uninvoicedCount}</div>
-          </div>
+          {statusCards.map((card) => (
+            <button
+              key={card.key}
+              onClick={() => setStatusFilter(prev => prev === card.key ? 'all' : card.key)}
+              className={`${card.base} rounded-lg p-3 text-left transition-shadow ${statusFilter === card.key ? card.activeRing : card.hoverRing}`}
+            >
+              <div className={`text-xs ${card.labelCls}`}>{card.label}</div>
+              <div className={`text-lg font-bold ${card.countCls}`}>{card.count}</div>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -192,7 +246,7 @@ export default function Performance() {
           <div>开票时间</div>
           <div>回款时间</div>
         </div>
-        {performanceList.map((item) => {
+        {filteredList.map((item) => {
           const data = item as any;
           const isInvoiced = data.invoiceStatus === '已开票';
           const isNotInvoiced = !isInvoiced;
@@ -200,7 +254,13 @@ export default function Performance() {
           const isNotPaid = !isPaid;
           const canViewAmount = currentUser?.role === 'admin' || item.userId === currentUser?.id;
           return (
-            <div key={item.id} className="border-b border-gray-50 hover:bg-gray-50">
+            <div
+              key={item.id}
+              onClick={() => openAppointment(item)}
+              role="button"
+              aria-label={`查看行程 ${(item as any).customerName || item.company}`}
+              className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer"
+            >
               <div className="md:hidden px-4 py-3 space-y-2">
                 <div className="flex justify-between items-start">
                   <span className="text-xs text-gray-500">客户名称</span>
@@ -239,9 +299,9 @@ export default function Performance() {
             </div>
           );
         })}
-        {performanceList.length === 0 && (
+        {filteredList.length === 0 && (
           <div className="px-4 py-8 text-center text-gray-400">
-            暂无数据
+            {statusFilter === 'all' ? '暂无数据' : '该状态下暂无数据'}
           </div>
         )}
       </div>
@@ -271,6 +331,17 @@ export default function Performance() {
           </div>
         </div>
       )}
+
+      <AppointmentModal
+        key={`${isModalOpen}-${selectedAppointment?.id || 'new'}`}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        appointment={selectedAppointment}
+        users={users}
+        currentUser={currentUser}
+        onSave={handleModalSave}
+        onDelete={handleModalDelete}
+      />
     </div>
   );
 }

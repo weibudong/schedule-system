@@ -19,21 +19,28 @@ export interface UserContextType {
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const UserProvider = ({ children }: { children: ReactNode }) => {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [selectedUserId, setSelectedUserId] = useState('1');
+  // 同步从 localStorage 恢复登录态，避免首帧 currentUser 为 null
+  // 导致受保护路由先跳 /login、登录态恢复后又跳回 / 的问题（深层链接失效）
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    try {
+      const savedUser = localStorage.getItem('currentUser');
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch {
+      localStorage.removeItem('currentUser');
+      return null;
+    }
+  });
+  const [selectedUserId, setSelectedUserId] = useState(() => {
+    try {
+      const savedUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+      return savedUser?.id || '1';
+    } catch {
+      return '1';
+    }
+  });
   const [users, setUsers] = useState<User[]>([]);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-      try {
-        const user = JSON.parse(savedUser);
-        setCurrentUser(user);
-        setSelectedUserId(user.id);
-      } catch {
-        localStorage.removeItem('currentUser');
-      }
-    }
     fetchUsers();
   }, []);
 

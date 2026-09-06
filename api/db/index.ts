@@ -54,6 +54,7 @@ export function initDb() {
       paymentStatus TEXT NOT NULL DEFAULT '未回款',
       invoiceStatus TEXT NOT NULL DEFAULT '未开票',
       invoiceDate TEXT,
+      invoiceNo TEXT,
       paymentDate TEXT,
       createdAt TEXT DEFAULT CURRENT_TIMESTAMP
     );
@@ -101,6 +102,10 @@ export function initDb() {
   const hasInvoiceDate = columns.some((col: any) => col.name === 'invoiceDate');
   if (!hasInvoiceDate) {
     db.exec("ALTER TABLE appointments ADD COLUMN invoiceDate TEXT");
+  }
+  const hasInvoiceNo = columns.some((col: any) => col.name === 'invoiceNo');
+  if (!hasInvoiceNo) {
+    db.exec("ALTER TABLE appointments ADD COLUMN invoiceNo TEXT");
   }
   const hasPaymentDate = columns.some((col: any) => col.name === 'paymentDate');
   if (!hasPaymentDate) {

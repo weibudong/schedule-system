@@ -95,7 +95,7 @@ router.post('/', (req, res) => {
 
 router.put('/:id', (req, res) => {
   const { id } = req.params;
-  const { date, timePeriod, company, type, amount, remark, status, customerName, paymentStatus, teacherId, invoiceStatus, invoiceDate, paymentDate } = req.body;
+  const { date, timePeriod, company, type, amount, remark, status, customerName, paymentStatus, teacherId, invoiceStatus, invoiceDate, paymentDate, invoiceNo } = req.body;
   const db = getDb();
   
   const existing = db.prepare('SELECT * FROM appointments WHERE id = ?').get(id);
@@ -122,6 +122,7 @@ router.put('/:id', (req, res) => {
           customerName = COALESCE(?, customerName),
           paymentStatus = COALESCE(?, paymentStatus),
           invoiceStatus = COALESCE(?, invoiceStatus),
+          invoiceNo = COALESCE(?, invoiceNo),
           invoiceDate = COALESCE(?, invoiceDate),
           paymentDate = COALESCE(?, paymentDate),
           province = COALESCE(?, province),
@@ -140,6 +141,7 @@ router.put('/:id', (req, res) => {
       customerName || null,
       paymentStatus || null,
       invoiceStatus || null,
+      invoiceNo !== undefined ? invoiceNo : null,
       finalInvoiceDate,
       finalPaymentDate,
       (req.body as any).province || null,
