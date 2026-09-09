@@ -20,7 +20,7 @@ import calendarRoutes from './routes/calendar.js'
 import performanceRoutes from './routes/performance.js'
 import userRoutes from './routes/users.js'
 import { sendBackup, restoreFromBackup, backupDataDir } from './services/backup.js'
-import { initDb, reconnectDb, dbPath, dbBackupDir, storageLocation } from './db/index.js'
+import { initDb, reconnectDb, dbPath, dbBackupDir, storageLocation, storageDiagnostics } from './db/index.js'
 
 // for esm mode
 const __filename = fileURLToPath(import.meta.url)
@@ -188,6 +188,8 @@ app.use(
     res.status(200).json({
       success: true,
       message: 'ok',
+      storageLocation,
+      storage: storageDiagnostics
     })
   },
 )

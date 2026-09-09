@@ -7,80 +7,171 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ===== 存储路径解析 =====
-// CloudBase 云托管：储存桶（CFS 持久化存储）挂载在 /mnt/data，
-// 数据写入该目录后，重新部署/实例重建数据不丢失，且可在储存桶文件列表中看到。
-// 本地开发：储存桶不存在，回退到项目内目录（api/dev.db、data/、backup/）。
-// 可用环境变量 DATA_MOUNT_DIR 覆盖挂载点（便于本地测试）。
-const MOUNT_DIR = process.env.DATA_MOUNT_DIR || '/mnt/data';
+// CloudBase 云托管：CFS 文件存储挂载到容器内某路径（控制台配置，默认为 /mnt），
+// 数据写入该目录后，重新部署/实例重建数据不丢失，且可在 CFS 文件列表中看到。
+// 本地开发：无网络挂载，回退到项目内目录（api/dev.db、data/、backup/）。
+// 可用环境变量 DATA_MOUNT_DIR 显式指定挂载点（最高优先级）。
+//
+// 注意：不能用「目录是否存在」判断挂载点——Dockerfile/启动脚本会在容器本地盘
+// 创建同名目录（如 /mnt/data），existsSync 恒为 true 会导致数据误写到容器临时层。
+// 必须通过 /proc/mounts（nfs/nfs4/cifs 等网络文件系统）或设备号差异识别真实挂载点。
 const projectRoot = path.join(__dirname, '..', '..');
 
-function mountAvailable(): boolean {
-  if (process.env.CLOUDBASE_ENV !== 'true') return false;
+// 网络/持久化文件系统类型（CFS 基于 NFS）
+const NETWORK_FS_TYPES = new Set(['nfs', 'nfs4', 'cifs', 'smbfs', 'cfs', 'fuse.cfs', 'fuse.tencent-cfs']);
+
+interface MountInfo {
+  device: string;
+  target: string;
+  type: string;
+}
+
+// 读取 /proc/mounts 中的挂载信息
+function readMounts(): MountInfo[] {
   try {
-    return fs.existsSync(MOUNT_DIR) && fs.statSync(MOUNT_DIR).isDirectory();
+    const content = fs.readFileSync('/proc/mounts', 'utf-8');
+    return content
+      .split('\n')
+      .filter(Boolean)
+      .map(line => {
+        const [device, target, type] = line.split(' ');
+        return { device: device || '', target: target ? decodeURIComponent(target) : '', type: type || '' };
+      })
+      .filter(m => m.target);
+  } catch {
+    return [];
+  }
+}
+
+const allMounts = readMounts();
+const networkMounts = allMounts.filter(m => NETWORK_FS_TYPES.has(m.type));
+
+// 判断路径是否位于网络挂载点之上（路径本身是挂载点，或在挂载点子目录内）
+function isOnNetworkMount(p: string): boolean {
+  const resolved = path.resolve(p);
+  return networkMounts.some(m => resolved === m.target || resolved.startsWith(m.target + '/'));
+}
+
+// 判断路径是否为挂载点（设备号与父目录不同，覆盖 bind mount 等情况）
+function isMountPointByDev(p: string): boolean {
+  try {
+    const resolved = path.resolve(p);
+    if (resolved === '/') return false;
+    const st = fs.statSync(resolved);
+    const parentSt = fs.statSync(path.dirname(resolved));
+    return st.dev !== parentSt.dev;
   } catch {
     return false;
   }
 }
 
-const useMount = mountAvailable();
+function dirUsable(p: string): boolean {
+  try {
+    return fs.existsSync(p) && fs.statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+// 解析持久化挂载目录：环境变量 > 常见挂载点候选
+// CloudBase 云托管 CFS 默认挂载路径为 /mnt；也有用户配成 /mnt/data、/mnt/cfs、/data 等
+function resolveMountDir(): string | null {
+  if (process.env.CLOUDBASE_ENV !== 'true' && !process.env.DATA_MOUNT_DIR) return null;
+
+  const candidates: string[] = [];
+  if (process.env.DATA_MOUNT_DIR) candidates.push(process.env.DATA_MOUNT_DIR);
+  candidates.push('/mnt', '/mnt/data', '/mnt/cfs', '/data', '/cfs', '/mnt/data/cfs');
+
+  for (const c of candidates) {
+    if (!dirUsable(c)) continue;
+    if (isOnNetworkMount(c) || isMountPointByDev(c)) {
+      return path.resolve(c);
+    }
+  }
+  return null;
+}
+
+const mountDir = resolveMountDir();
+const useMount = mountDir !== null;
 
 // 数据库文件
 const localDbPath = path.join(__dirname, '..', 'dev.db');
-const mountDbPath = path.join(MOUNT_DIR, 'dev.db');
+const mountDbPath = mountDir ? path.join(mountDir, 'dev.db') : '';
 export const dbPath = useMount ? mountDbPath : localDbPath;
 
 // JSON 备份导出目录
 const localDataDir = path.join(projectRoot, 'data');
-export const backupDataDir = useMount ? path.join(MOUNT_DIR, 'data') : localDataDir;
+export const backupDataDir = useMount ? path.join(mountDir!, 'data') : localDataDir;
 
 // .db 文件备份目录
 const localBackupDir = path.join(projectRoot, 'backup');
-export const dbBackupDir = useMount ? path.join(MOUNT_DIR, 'backup') : localBackupDir;
+export const dbBackupDir = useMount ? path.join(mountDir!, 'backup') : localBackupDir;
 
-export const storageLocation = useMount ? `bucket:${MOUNT_DIR}` : 'local';
+export const storageLocation = useMount ? `bucket:${mountDir}` : 'local';
 
-// 首次以储存桶模式启动时，把容器内旧数据迁移到桶里（仅当桶中尚不存在对应文件）
+// 诊断信息（供 /api/backup/status、/api/health 上报，便于部署后核对）
+export const storageDiagnostics = {
+  storageLocation,
+  mountDir,
+  dbPath: useMount ? mountDbPath : localDbPath,
+  backupDataDir: useMount ? path.join(mountDir!, 'data') : localDataDir,
+  dbBackupDir: useMount ? path.join(mountDir!, 'backup') : localBackupDir,
+  networkMounts: networkMounts.map(m => `${m.type} ${m.device} -> ${m.target}`),
+  cloudbaseEnv: process.env.CLOUDBASE_ENV === 'true',
+  envDataMountDir: process.env.DATA_MOUNT_DIR || null
+};
+
+// 首次以挂载模式启动时，把容器内旧数据迁移到持久化目录（仅当目标中尚不存在对应文件）
 function migrateLegacyData() {
-  if (!useMount) return;
+  if (!useMount || !mountDir) return;
   try {
-    fs.mkdirSync(path.join(MOUNT_DIR, 'data'), { recursive: true });
-    fs.mkdirSync(path.join(MOUNT_DIR, 'backup'), { recursive: true });
+    fs.mkdirSync(path.join(mountDir, 'data'), { recursive: true });
+    fs.mkdirSync(path.join(mountDir, 'backup'), { recursive: true });
 
-    // 旧数据库 /app/api/dev.db -> /mnt/data/dev.db
+    // 旧数据库 /app/api/dev.db -> <挂载点>/dev.db
     if (!fs.existsSync(mountDbPath) && fs.existsSync(localDbPath) && fs.statSync(localDbPath).size > 0) {
       fs.copyFileSync(localDbPath, mountDbPath);
-      console.log('[DB] 已迁移容器内旧数据库到储存桶:', mountDbPath);
+      console.log('[DB] 已迁移容器内旧数据库到持久化存储:', mountDbPath);
     }
 
-    // 旧 JSON 备份 /app/data/*.json -> /mnt/data/data/
+    // 旧 JSON 备份 /app/data/*.json -> <挂载点>/data/
     if (fs.existsSync(localDataDir)) {
       fs.readdirSync(localDataDir)
         .filter(f => f.startsWith('data-') && f.endsWith('.json'))
         .forEach(f => {
-          const target = path.join(MOUNT_DIR, 'data', f);
+          const target = path.join(mountDir, 'data', f);
           if (!fs.existsSync(target)) fs.copyFileSync(path.join(localDataDir, f), target);
         });
     }
 
-    // 旧 .db 备份 /app/backup/*.db -> /mnt/data/backup/
+    // 旧 .db 备份 /app/backup/*.db -> <挂载点>/backup/
     if (fs.existsSync(localBackupDir)) {
       fs.readdirSync(localBackupDir)
         .filter(f => f.endsWith('.db'))
         .forEach(f => {
-          const target = path.join(MOUNT_DIR, 'backup', f);
+          const target = path.join(mountDir, 'backup', f);
           if (!fs.existsSync(target)) fs.copyFileSync(path.join(localBackupDir, f), target);
         });
     }
   } catch (e) {
-    console.warn('[DB] 旧数据迁移到储存桶失败（不影响启动）:', (e as Error).message);
+    console.warn('[DB] 旧数据迁移失败（不影响启动）:', (e as Error).message);
   }
 }
 
 migrateLegacyData();
 
+console.log('[DB] ============================================');
 console.log('[DB] 存储位置:', storageLocation);
+if (useMount) {
+  console.log('[DB] 持久化挂载点:', mountDir);
+  console.log('[DB] 检测到的网络挂载:', storageDiagnostics.networkMounts.length ? storageDiagnostics.networkMounts.join(' | ') : '（通过设备号识别）');
+} else if (process.env.CLOUDBASE_ENV === 'true') {
+  console.warn('[DB] ⚠️  ⚠️  ⚠️  未检测到 CFS 持久化挂载！数据将写入容器临时磁盘，重新部署后会丢失！');
+  console.warn('[DB] 请在 CloudBase 控制台「服务详情 → 存储挂载」启用 CFS，或设置环境变量 DATA_MOUNT_DIR 为实际挂载路径');
+  console.warn('[DB] 当前识别到的网络挂载:', storageDiagnostics.networkMounts.length ? storageDiagnostics.networkMounts.join(' | ') : '无');
+}
 console.log('[DB] 数据库路径:', dbPath);
+console.log('[DB] ============================================');
 
 function applyPragmas(database: Database.Database) {
   // CFS 为网络文件存储，不使用 WAL（避免跨实例锁问题），保持默认 rollback journal
@@ -234,13 +325,17 @@ export function initDb() {
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
   if (userCount === 0) {
     db.prepare('INSERT INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('1', '魏凯', '13026151270', '123', 'admin');
-    db.prepare('INSERT INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('2', '熊娟', '222', '123', 'admin');
-    db.prepare('INSERT INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('3', '兰天翔', '333', '123', 'sales');
+    db.prepare('INSERT INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('2', '熊娟', '15972212660', '123', 'admin');
+    db.prepare('INSERT INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('3', '兰天翔', '15972212880', '123', 'sales');
   } else {
     db.prepare('UPDATE users SET phone = ?, password = ?, role = ? WHERE id = ?').run('13026151270', '123', 'admin', '1');
-    db.prepare('INSERT OR IGNORE INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('2', '熊娟', '222', '123', 'admin');
-    db.prepare('INSERT OR IGNORE INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('3', '兰天翔', '333', '123', 'sales');
+    db.prepare('INSERT OR IGNORE INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('2', '熊娟', '15972212660', '123', 'admin');
+    db.prepare('INSERT OR IGNORE INTO users (id, name, phone, password, role) VALUES (?, ?, ?, ?, ?)').run('3', '兰天翔', '15972212880', '123', 'sales');
   }
+
+  // 种子账号手机号更新：仅当仍是初始号码时更新，不覆盖管理员后续修改过的号码
+  db.prepare("UPDATE users SET phone = ? WHERE id = ? AND phone = ?").run('15972212660', '2', '222');
+  db.prepare("UPDATE users SET phone = ? WHERE id = ? AND phone = ?").run('15972212880', '3', '333');
 
   // 行程数据初始化已注释，用户要求清空行程数据
   // const appointmentCount = db.prepare('SELECT COUNT(*) as count FROM appointments').get().count;
