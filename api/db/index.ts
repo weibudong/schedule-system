@@ -1,18 +1,96 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 数据库路径：始终使用 api/dev.db
-// __dirname 是 api/db/，需要 .. 才能到 api/
-// 本地开发: api/dev.db
-// 生产环境: /app/api/dev.db
-const dbPath = path.join(__dirname, '..', 'dev.db');
+// ===== 存储路径解析 =====
+// CloudBase 云托管：储存桶（CFS 持久化存储）挂载在 /mnt/data，
+// 数据写入该目录后，重新部署/实例重建数据不丢失，且可在储存桶文件列表中看到。
+// 本地开发：储存桶不存在，回退到项目内目录（api/dev.db、data/、backup/）。
+// 可用环境变量 DATA_MOUNT_DIR 覆盖挂载点（便于本地测试）。
+const MOUNT_DIR = process.env.DATA_MOUNT_DIR || '/mnt/data';
+const projectRoot = path.join(__dirname, '..', '..');
+
+function mountAvailable(): boolean {
+  if (process.env.CLOUDBASE_ENV !== 'true') return false;
+  try {
+    return fs.existsSync(MOUNT_DIR) && fs.statSync(MOUNT_DIR).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+const useMount = mountAvailable();
+
+// 数据库文件
+const localDbPath = path.join(__dirname, '..', 'dev.db');
+const mountDbPath = path.join(MOUNT_DIR, 'dev.db');
+export const dbPath = useMount ? mountDbPath : localDbPath;
+
+// JSON 备份导出目录
+const localDataDir = path.join(projectRoot, 'data');
+export const backupDataDir = useMount ? path.join(MOUNT_DIR, 'data') : localDataDir;
+
+// .db 文件备份目录
+const localBackupDir = path.join(projectRoot, 'backup');
+export const dbBackupDir = useMount ? path.join(MOUNT_DIR, 'backup') : localBackupDir;
+
+export const storageLocation = useMount ? `bucket:${MOUNT_DIR}` : 'local';
+
+// 首次以储存桶模式启动时，把容器内旧数据迁移到桶里（仅当桶中尚不存在对应文件）
+function migrateLegacyData() {
+  if (!useMount) return;
+  try {
+    fs.mkdirSync(path.join(MOUNT_DIR, 'data'), { recursive: true });
+    fs.mkdirSync(path.join(MOUNT_DIR, 'backup'), { recursive: true });
+
+    // 旧数据库 /app/api/dev.db -> /mnt/data/dev.db
+    if (!fs.existsSync(mountDbPath) && fs.existsSync(localDbPath) && fs.statSync(localDbPath).size > 0) {
+      fs.copyFileSync(localDbPath, mountDbPath);
+      console.log('[DB] 已迁移容器内旧数据库到储存桶:', mountDbPath);
+    }
+
+    // 旧 JSON 备份 /app/data/*.json -> /mnt/data/data/
+    if (fs.existsSync(localDataDir)) {
+      fs.readdirSync(localDataDir)
+        .filter(f => f.startsWith('data-') && f.endsWith('.json'))
+        .forEach(f => {
+          const target = path.join(MOUNT_DIR, 'data', f);
+          if (!fs.existsSync(target)) fs.copyFileSync(path.join(localDataDir, f), target);
+        });
+    }
+
+    // 旧 .db 备份 /app/backup/*.db -> /mnt/data/backup/
+    if (fs.existsSync(localBackupDir)) {
+      fs.readdirSync(localBackupDir)
+        .filter(f => f.endsWith('.db'))
+        .forEach(f => {
+          const target = path.join(MOUNT_DIR, 'backup', f);
+          if (!fs.existsSync(target)) fs.copyFileSync(path.join(localBackupDir, f), target);
+        });
+    }
+  } catch (e) {
+    console.warn('[DB] 旧数据迁移到储存桶失败（不影响启动）:', (e as Error).message);
+  }
+}
+
+migrateLegacyData();
+
+console.log('[DB] 存储位置:', storageLocation);
 console.log('[DB] 数据库路径:', dbPath);
 
+function applyPragmas(database: Database.Database) {
+  // CFS 为网络文件存储，不使用 WAL（避免跨实例锁问题），保持默认 rollback journal
+  database.pragma('journal_mode = DELETE');
+  database.pragma('busy_timeout = 5000');
+  database.pragma('synchronous = NORMAL');
+}
+
 let db = new Database(dbPath);
+applyPragmas(db);
 
 export function getDb() {
   return db;
@@ -26,6 +104,7 @@ export function reconnectDb() {
     // 忽略关闭错误
   }
   db = new Database(dbPath);
+  applyPragmas(db);
   console.log('[DB] 数据库重连成功');
   return db;
 }

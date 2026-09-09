@@ -20,7 +20,7 @@ import calendarRoutes from './routes/calendar.js'
 import performanceRoutes from './routes/performance.js'
 import userRoutes from './routes/users.js'
 import { sendBackup, restoreFromBackup, backupDataDir } from './services/backup.js'
-import { initDb, reconnectDb } from './db/index.js'
+import { initDb, reconnectDb, dbPath, dbBackupDir, storageLocation } from './db/index.js'
 
 // for esm mode
 const __filename = fileURLToPath(import.meta.url)
@@ -78,16 +78,17 @@ app.get('/api/backup/status', (req: Request, res: Response) => {
     
     // 获取 .db 备份文件列表
     const dbBackupFiles: string[] = [];
-    const backupDir = path.join(__dirname, '..', 'backup');
-    if (fs.existsSync(backupDir)) {
-      const files = fs.readdirSync(backupDir).filter(f => f.startsWith('dev-backup-') && f.endsWith('.db'));
+    if (fs.existsSync(dbBackupDir)) {
+      const files = fs.readdirSync(dbBackupDir).filter(f => f.startsWith('dev-backup-') && f.endsWith('.db'));
       dbBackupFiles.push(...files.sort().reverse().slice(0, 10));
     }
     
     res.json({
       backupFiles,
       dbBackupFiles,
-      mailConfigured: !!process.env.MAIL_PASS
+      mailConfigured: !!process.env.MAIL_PASS,
+      storageLocation,
+      dbPath
     });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
@@ -138,15 +139,14 @@ app.post('/api/backup/upload-db', async (req: Request, res: Response) => {
       return;
     }
 
-    // 数据库文件路径
-    const dbPath = path.join(__dirname, 'dev.db');
-    
+    // 数据库文件路径（生产环境为储存桶 /mnt/data/dev.db，由 db/index 统一解析）
+    console.log('[Backup] 上传目标数据库路径:', dbPath);
+
     // 备份当前数据库
     if (fs.existsSync(dbPath)) {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const backupDir = path.join(__dirname, '..', 'backup');
-      fs.mkdirSync(backupDir, { recursive: true });
-      const backupPath = path.join(backupDir, `dev-backup-before-upload-${timestamp}.db`);
+      fs.mkdirSync(dbBackupDir, { recursive: true });
+      const backupPath = path.join(dbBackupDir, `dev-backup-before-upload-${timestamp}.db`);
       fs.copyFileSync(dbPath, backupPath);
       console.log(`[Backup] 旧数据库已备份到: ${backupPath}`);
     }

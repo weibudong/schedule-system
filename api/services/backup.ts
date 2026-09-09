@@ -5,26 +5,18 @@ import cron from 'node-cron';
 import nodemailer from 'nodemailer';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// 存储路径统一由 db/index 解析：CloudBase 生产环境落储存桶 /mnt/data，本地开发落项目目录
+import { dbPath, backupDataDir, dbBackupDir, storageLocation } from '../db/index.js';
 
 const isCloudBase = process.env.CLOUDBASE_ENV === 'true';
 const isEmas = process.env.EMAS_ENV === 'true';
 const isProduction = process.env.NODE_ENV === 'production';
 
-// 数据库路径：始终使用 api/dev.db
-// 在生产环境中: /app/api/dev.db
-// 在本地环境中: api/dev.db
-const dbPath = path.join(__dirname, '..', 'dev.db');
-const projectRoot = path.join(__dirname, '..', '..');
-const backupDataDir = path.join(projectRoot, 'data');
-
+console.log('[Backup] 存储位置:', storageLocation);
 console.log('[Backup] 数据库路径:', dbPath);
-console.log('[Backup] 项目根目录:', projectRoot);
-console.log('[Backup] 备份目录:', backupDataDir);
+console.log('[Backup] JSON备份目录:', backupDataDir);
+console.log('[Backup] DB备份目录:', dbBackupDir);
 
 const BACKUP_CONFIG = {
   cron: '0 2 * * *',
@@ -236,12 +228,12 @@ async function sendEmailBackup(timeStr: string, jsonFilePath?: string): Promise<
   return false;
 }
 
-// 手动复制备份到项目目录（便于随项目一起部署）
+// 手动复制 .db 备份文件到备份目录（生产环境为储存桶 /mnt/data/backup）
 function copyBackupToProject(timeStr: string): string | null {
   try {
     if (!fs.existsSync(dbPath)) return null;
-    
-    const copyDir = path.join(projectRoot, 'backup');
+
+    const copyDir = dbBackupDir;
     if (!fs.existsSync(copyDir)) {
       fs.mkdirSync(copyDir, { recursive: true });
     }
@@ -358,7 +350,7 @@ async function restoreFromBackup(dateStr: string): Promise<{ success: boolean; e
     }
 
     // 支持从 .db 文件恢复
-    const dbFile = path.join(projectRoot, 'backup', `dev-backup-${dateStr}.db`);
+    const dbFile = path.join(dbBackupDir, `dev-backup-${dateStr}.db`);
     if (fs.existsSync(dbFile)) {
       fs.copyFileSync(dbFile, dbPath);
       console.log(`[Backup] 数据库文件恢复成功: ${dateStr}`);
