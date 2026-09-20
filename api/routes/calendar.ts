@@ -60,10 +60,19 @@ router.get('/', (req, res) => {
 router.post('/', (req, res) => {
   const { date, timePeriod, company, type, amount, remark, status, customerName, paymentStatus, userId = '1', teacherId } = req.body;
   const db = getDb();
-  
+
+  // 冲突检查：同一执行人员同一日期同一时间段只能有一个行程
+  if (teacherId && date && timePeriod) {
+    const conflict = db.prepare('SELECT id, customerName, teacher FROM appointments WHERE teacherId = ? AND date = ? AND timePeriod = ?').get(teacherId, date, timePeriod) as any;
+    if (conflict) {
+      res.json({ success: false, message: `该执行人员在此时间段已有行程（${conflict.customerName || conflict.teacher}），不能重复添加` });
+      return;
+    }
+  }
+
   const teacherUser = db.prepare('SELECT name FROM users WHERE id = ?').get(teacherId);
   const teacherName = teacherUser?.name || '';
-  
+
   const id = Date.now().toString();
   
   db.prepare(`
@@ -99,7 +108,19 @@ router.put('/:id', (req, res) => {
   const db = getDb();
   
   const existing = db.prepare('SELECT * FROM appointments WHERE id = ?').get(id);
-  
+
+  // 冲突检查：同一执行人员同一日期同一时间段只能有一个行程（排除自身）
+  const checkTeacherId = teacherId || (existing as any)?.teacherId;
+  const checkDate = date || (existing as any)?.date;
+  const checkTimePeriod = timePeriod || (existing as any)?.timePeriod;
+  if (checkTeacherId && checkDate && checkTimePeriod) {
+    const conflict = db.prepare('SELECT id, customerName, teacher FROM appointments WHERE teacherId = ? AND date = ? AND timePeriod = ? AND id != ?').get(checkTeacherId, checkDate, checkTimePeriod, id) as any;
+    if (conflict) {
+      res.json({ success: false, message: `该执行人员在此时间段已有行程（${conflict.customerName || conflict.teacher}），不能重复添加` });
+      return;
+    }
+  }
+
   const teacherUser = teacherId ? db.prepare('SELECT name FROM users WHERE id = ?').get(teacherId) : null;
   const teacherName = teacherUser?.name || null;
   

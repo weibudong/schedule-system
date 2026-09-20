@@ -87,11 +87,23 @@ export default function Performance() {
     setIsModalOpen(true);
   };
 
-  const handleModalSave = (data: Partial<Appointment>) => {
+  const handleModalSave = async (data: Partial<Appointment>): Promise<boolean> => {
     if (data.id) {
-      calendarApi.update(data.id, data).then(() => setTriggerSearch(prev => !prev));
+      const res: any = await calendarApi.update(data.id, data);
+      if (res && res.success === false) {
+        alert(res.message || '该时间段已有行程，不能重复添加');
+        return false;
+      }
+      setTriggerSearch(prev => !prev);
+      return true;
     } else {
-      calendarApi.create({ ...data, userId: selectedUserId } as any).then(() => setTriggerSearch(prev => !prev));
+      const res: any = await calendarApi.create({ ...data, userId: selectedUserId } as any);
+      if (res && res.success === false) {
+        alert(res.message || '该时间段已有行程，不能重复添加');
+        return false;
+      }
+      setTriggerSearch(prev => !prev);
+      return true;
     }
   };
 

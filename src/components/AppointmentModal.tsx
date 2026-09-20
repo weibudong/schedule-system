@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, ChevronDown, Search } from 'lucide-react';
 import type { Appointment } from '../types';
 import type { User } from '../context/UserContext';
 import { provinces, cities } from '../data/locationData';
+import { companies } from '../data/companies';
 
 interface Props {
   isOpen: boolean;
@@ -11,7 +12,7 @@ interface Props {
   defaultDate?: string;
   users: User[];
   currentUser: User | null;
-  onSave: (data: Partial<Appointment>) => void;
+  onSave: (data: Partial<Appointment>) => Promise<boolean> | boolean;
   onDelete?: (id: string) => void;
 }
 
@@ -48,6 +49,9 @@ export default function AppointmentModal({
   const [pendingAction, setPendingAction] = useState<'invoice' | 'payment' | 'invoiceNo' | null>(null);
   const [actionDate, setActionDate] = useState('');
   const [actionInvoiceNo, setActionInvoiceNo] = useState('');
+  const [companyOpen, setCompanyOpen] = useState(false);
+  const [companySearch, setCompanySearch] = useState('');
+  const companyRef = useRef<HTMLDivElement>(null);
 
   const [errors, setErrors] = useState({
     customerName: '',
@@ -94,6 +98,8 @@ export default function AppointmentModal({
       });
       setIsEditing(false);
       setPendingAction(null);
+      setCompanyOpen(false);
+      setCompanySearch('');
     } else if (defaultDate) {
       setFormData({
         date: defaultDate,
@@ -115,6 +121,8 @@ export default function AppointmentModal({
       });
       setIsEditing(false);
       setPendingAction(null);
+      setCompanyOpen(false);
+      setCompanySearch('');
     } else {
       setFormData({
         date: new Date().toISOString().split('T')[0],
@@ -134,16 +142,35 @@ export default function AppointmentModal({
         province: '',
         city: '',
       });
+      setCompanyOpen(false);
+      setCompanySearch('');
     }
   }, [appointment, defaultDate, currentUser]);
 
-  const handleSubmit = () => {
+  // 点击外部关闭公司下拉
+  useEffect(() => {
+    if (!companyOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (companyRef.current && !companyRef.current.contains(e.target as Node)) {
+        setCompanyOpen(false);
+        setCompanySearch('');
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [companyOpen]);
+
+  const filteredCompanies = companies.filter((c) =>
+    c.toLowerCase().includes(companySearch.toLowerCase())
+  );
+
+  const handleSubmit = async () => {
     if (!validate()) return;
-    onSave({
+    const ok = await onSave({
       id: appointment?.id || '',
       ...formData,
     });
-    onClose();
+    if (ok) onClose();
   };
 
   const handleDelete = () => {
@@ -189,7 +216,7 @@ export default function AppointmentModal({
 
   if (!isOpen) return null;
 
-  const timePeriods = ['上午', '下午', '晚上'];
+  const timePeriods = ['上午', '下午'];
   const types = ['面谈', '培训', '会议', '网络'];
   const statuses = ['待审核', '已确认', '已完成', '已取消'];
   const isLocked = formData.invoiceStatus === '已开票' || formData.paymentStatus === '已回款';
@@ -297,6 +324,68 @@ export default function AppointmentModal({
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
+          </div>
+
+          <div className="flex items-start gap-3 py-3 border-b border-gray-100">
+            <span className="text-sm text-gray-500 w-20 pt-1.5">公司</span>
+            <div className="flex-1 relative" ref={companyRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isFieldDisabled) return;
+                  setCompanyOpen((v) => !v);
+                  setCompanySearch('');
+                }}
+                disabled={isFieldDisabled}
+                className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 border rounded-lg text-sm transition-colors ${
+                  isFieldDisabled
+                    ? 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                    : 'border-gray-200 bg-white text-gray-800 hover:border-gray-300'
+                }`}
+              >
+                <span className={formData.company ? 'text-gray-800 truncate' : 'text-gray-400'}>
+                  {formData.company || '请选择公司'}
+                </span>
+                <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${companyOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {companyOpen && !isFieldDisabled && (
+                <div className="absolute left-0 right-0 mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                  <div className="relative border-b border-gray-100">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <input
+                      type="text"
+                      value={companySearch}
+                      onChange={(e) => setCompanySearch(e.target.value)}
+                      placeholder="搜索公司"
+                      autoFocus
+                      className="w-full pl-8 pr-3 py-2 text-sm outline-none"
+                    />
+                  </div>
+                  <div className="max-h-48 overflow-y-auto py-1">
+                    {filteredCompanies.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-gray-400 text-center">无匹配公司</div>
+                    ) : (
+                      filteredCompanies.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => {
+                            setFormData((prev) => ({ ...prev, company: c }));
+                            setCompanyOpen(false);
+                            setCompanySearch('');
+                          }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition-colors ${
+                            formData.company === c ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700'
+                          }`}
+                        >
+                          {c}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-3 py-3 border-b border-gray-100">

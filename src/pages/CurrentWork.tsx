@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Plus, UserPlus, Database, Upload, Sunrise, Sun, Moon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Sun, Moon, Plus, UserPlus, Database, Upload } from 'lucide-react';
 import { calendarApi, userApi } from '../api';
 import { useUser } from '../context/UserContext';
 import type { Appointment, CalendarSummary } from '../types';
@@ -10,9 +10,8 @@ import AddUserModal from '../components/AddUserModal';
 const weekDays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
 const timePeriodIcon = (period?: string) => {
-  if (period === '下午') return <Sun size={10} className="shrink-0" />;
-  if (period === '晚上') return <Moon size={10} className="shrink-0" />;
-  return <Sunrise size={10} className="shrink-0" />;
+  if (period === '下午') return <Moon size={11} className="shrink-0 text-indigo-500" aria-label="下午" />;
+  return <Sun size={11} className="shrink-0 text-amber-500" aria-label="上午" />;
 };
 
 export default function CurrentWork() {
@@ -26,6 +25,8 @@ export default function CurrentWork() {
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [pickerYear, setPickerYear] = useState(new Date().getFullYear());
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const { currentUser, selectedUserId, users, setSelectedUserId, logout } = useUser();
@@ -86,8 +87,11 @@ export default function CurrentWork() {
     return days;
   };
 
+  const periodWeight = (p?: string) => (p === '上午' ? 0 : p === '下午' ? 1 : 2);
   const getAppointmentsForDate = (fullDate: string) => {
-    return appointments.filter(a => a.date === fullDate);
+    return appointments
+      .filter(a => a.date === fullDate)
+      .sort((a, b) => periodWeight(a.timePeriod) - periodWeight(b.timePeriod));
   };
 
   const formatAmount = (amount: number) => {
@@ -121,15 +125,23 @@ export default function CurrentWork() {
     setIsModalOpen(true);
   };
 
-  const handleSave = (data: Partial<Appointment>) => {
+  const handleSave = async (data: Partial<Appointment>): Promise<boolean> => {
     if (data.id) {
-      calendarApi.update(data.id, data).then(() => {
-        refreshData();
-      });
+      const res: any = await calendarApi.update(data.id, data);
+      if (res && res.success === false) {
+        alert(res.message || '该时间段已有行程，不能重复添加');
+        return false;
+      }
+      refreshData();
+      return true;
     } else {
-      calendarApi.create({ ...data, userId: selectedUserId } as any).then(() => {
-        refreshData();
-      });
+      const res: any = await calendarApi.create({ ...data, userId: selectedUserId } as any);
+      if (res && res.success === false) {
+        alert(res.message || '该时间段已有行程，不能重复添加');
+        return false;
+      }
+      refreshData();
+      return true;
     }
   };
 
@@ -278,8 +290,67 @@ export default function CurrentWork() {
           >
             <ChevronLeft className="w-6 h-6" />
           </button>
-          <div className="text-lg font-semibold">
-            {currentDate.getFullYear()}年{currentDate.getMonth() + 1}月
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setPickerYear(currentDate.getFullYear());
+                setShowMonthPicker(!showMonthPicker);
+              }}
+              className="text-lg font-semibold flex items-center gap-1 hover:text-blue-600 transition-colors"
+            >
+              {currentDate.getFullYear()}年{currentDate.getMonth() + 1}月
+              <ChevronDown className="w-4 h-4" />
+            </button>
+            {showMonthPicker && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowMonthPicker(false)}
+                />
+                <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-white rounded-lg shadow-lg border border-gray-200 p-3 z-50 w-64">
+                  <div className="flex items-center justify-between mb-3">
+                    <button
+                      type="button"
+                      onClick={() => setPickerYear(pickerYear - 1)}
+                      className="p-1 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="font-medium text-sm">{pickerYear}年</span>
+                    <button
+                      type="button"
+                      onClick={() => setPickerYear(pickerYear + 1)}
+                      className="p-1 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
+                      const isActive = pickerYear === currentDate.getFullYear() && m === currentDate.getMonth() + 1;
+                      return (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => {
+                            setCurrentDate(new Date(pickerYear, m - 1, 1));
+                            setShowMonthPicker(false);
+                          }}
+                          className={`py-2 rounded text-sm transition-colors ${
+                            isActive
+                              ? 'bg-blue-500 text-white'
+                              : 'hover:bg-gray-100 text-gray-700'
+                          }`}
+                        >
+                          {m}月
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
           <button 
             onClick={nextMonth}
@@ -351,11 +422,11 @@ export default function CurrentWork() {
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 px-4 py-2 bg-gray-100">
+      <div className="grid grid-cols-7 bg-gray-100 border-b border-gray-200">
         {weekDays.map((day) => (
           <div
             key={day}
-            className={`text-center text-xs font-medium py-2 ${
+            className={`text-center text-xs font-medium py-1.5 ${
               day === '周六' || day === '周日' ? 'text-red-500' : 'text-gray-600'
             }`}
           >
@@ -364,7 +435,7 @@ export default function CurrentWork() {
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-1 px-4 py-2">
+      <div className="grid grid-cols-7">
         {getDaysInMonth().map((day, index) => {
           const dayAppointments = getAppointmentsForDate(day.fullDate);
           const isToday = new Date().toDateString() === new Date(day.fullDate).toDateString();
@@ -376,16 +447,16 @@ export default function CurrentWork() {
               onClick={dayAppointments.length === 0 ? () => handleAddForDate(day.fullDate) : undefined}
               role={dayAppointments.length === 0 ? 'button' : undefined}
               aria-label={dayAppointments.length === 0 ? `添加 ${day.fullDate} 行程` : undefined}
-              className={`min-h-[80px] p-1 border border-gray-100 rounded-lg ${
+              className={`min-h-[80px] px-0.5 border-b border-r border-gray-200 ${
                 day.isCurrentMonth
                   ? isToday
-                    ? 'bg-blue-50 border-blue-200'
+                    ? 'bg-blue-50'
                     : 'bg-white'
                   : 'bg-gray-50'
               } ${dayAppointments.length === 0 ? 'cursor-pointer' : ''}`}
             >
               <div
-                className={`text-xs text-center py-1 ${
+                className={`text-xs text-center ${
                   !day.isCurrentMonth
                     ? 'text-gray-300'
                     : isWeekend
@@ -395,7 +466,7 @@ export default function CurrentWork() {
               >
                 {day.date}
               </div>
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {dayAppointments.map((app) => {
                   const isPaid = (app as any).paymentStatus === '已回款';
                   return (
@@ -404,14 +475,14 @@ export default function CurrentWork() {
                       onClick={() => handleEdit(app)}
                       role="button"
                       aria-label={`查看行程 ${app.customerName || app.company}`}
-                      className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer transition-colors flex items-center gap-0.5 ${
+                      className={`text-[10px] py-0.5 rounded truncate cursor-pointer transition-colors flex items-center ${
                         isPaid
                           ? 'bg-green-100 text-green-700 hover:bg-green-200 active:bg-green-300'
                           : 'bg-red-100 text-red-700 hover:bg-red-200 active:bg-red-300'
                       }`}
                     >
                       {timePeriodIcon(app.timePeriod)}
-                      <span className="truncate">{(app.province || app.city) ? `${app.province || ''}${app.city || ''} ` : ''}{app.customerName || app.company}</span>
+                      <span className="truncate">{app.city ? `${app.city || ''}` : ''}{app.customerName || app.company}</span>
                     </div>
                   );
                 })}
