@@ -269,7 +269,7 @@ async function sendBackup(): Promise<{
   // 步骤1：导出 JSON
   const exportResult = exportToJson(timeStr);
   if (exportResult.success) {
-    jsonExported = true;
+    // jsonExported = true;
   } else {
     errors.push(`JSON导出失败: ${exportResult.error}`);
   }
