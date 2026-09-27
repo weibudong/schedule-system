@@ -379,7 +379,7 @@ export default function CurrentWork() {
             </button>
             {currentUser?.role === 'admin' && (
               <>
-                {isSpecialUser && (
+                {/* {isSpecialUser && (
                   <button 
                     onClick={handleBackup}
                     disabled={isBackingUp}
@@ -407,7 +407,7 @@ export default function CurrentWork() {
                     onChange={handleFileUpload}
                     className="hidden"
                   />
-                )}
+                )} */}
                 <button 
                   onClick={() => setIsAddUserModalOpen(true)}
                   title="新增用户"

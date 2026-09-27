@@ -191,15 +191,15 @@ async function sendEmailBackup(timeStr: string, jsonFilePath?: string): Promise<
       }
 
       const now = new Date();
-      const info = await transporter.sendMail({
-        from: BACKUP_CONFIG.mail.from,
-        to: BACKUP_CONFIG.mail.to,
-        subject: `[备份] 行程系统数据 ${timeStr}`,
-        text: `备份时间：${now.toLocaleString('zh-CN')}\n\n数据库路径：${dbPath}\n\n附件包含：\n1. 数据库备份 (.db)\n2. 数据导出 (.json)`,
-        attachments
-      });
+      // const info = await transporter.sendMail({
+      //   from: BACKUP_CONFIG.mail.from,
+      //   to: BACKUP_CONFIG.mail.to,
+      //   subject: `[备份] 行程系统数据 ${timeStr}`,
+      //   text: `备份时间：${now.toLocaleString('zh-CN')}\n\n数据库路径：${dbPath}\n\n附件包含：\n1. 数据库备份 (.db)\n2. 数据导出 (.json)`,
+      //   attachments
+      // });
 
-      console.log(`[Backup] 邮件发送成功: ${timeStr}, 消息ID: ${info.messageId}`);
+      // console.log(`[Backup] 邮件发送成功: ${timeStr}, 消息ID: ${info.messageId}`);
       return true;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -269,7 +269,7 @@ async function sendBackup(): Promise<{
   // 步骤1：导出 JSON
   const exportResult = exportToJson(timeStr);
   if (exportResult.success) {
-    // jsonExported = true;
+    jsonExported = true;
   } else {
     errors.push(`JSON导出失败: ${exportResult.error}`);
   }
