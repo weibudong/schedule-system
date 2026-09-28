@@ -11,9 +11,5 @@ tcb cloudrun deploy
   "NODE_ENV": "production",
   "PORT": "80",
   "CLOUDBASE_ENV": "true",
-  "MAIL_USER": "307641135@qq.com",
-  "MAIL_PASS": "uyuosvqvcjpnbgjg",
-  "MAIL_FROM": "307641135@qq.com",
-  "MAIL_TO": "307641135@qq.com",
   "ENABLE_GIT_PUSH": "true"
 }
