@@ -1,0 +1,121 @@
+<view class="perf-page">
+  <!-- 标题栏 -->
+  <view class="perf-header">
+    <view class="perf-title">业绩详情</view>
+    <view class="perf-header-right">
+      <picker mode="selector" range="{{userOptions}}" value="{{userIndex}}" bindchange="onUserChange">
+        <view class="user-picker"><text class="user-picker-text">{{userOptions[userIndex]}}</text><view class="chev"></view></view>
+      </picker>
+      <view class="name-btn" bindtap="showLogout">{{currentUser.name}}</view>
+    </view>
+  </view>
+
+  <!-- 筛选区 -->
+  <view class="filter-bar">
+    <picker mode="selector" range="{{filterOptions}}" value="{{filterIndex}}" bindchange="onFilterTypeChange">
+      <view class="filter-picker filter-type">{{filterOptions[filterIndex]}}<view class="chev"></view></view>
+    </picker>
+    <view class="date-range">
+      <picker mode="selector" range="{{years}}" value="{{startYearIndex}}" bindchange="onStartYearChange">
+        <view class="filter-picker">{{years[startYearIndex]}}<view class="chev"></view></view>
+      </picker>
+      <picker mode="selector" range="{{months}}" value="{{startMonthIndex}}" bindchange="onStartMonthChange">
+        <view class="filter-picker">{{months[startMonthIndex]}}<view class="chev"></view></view>
+      </picker>
+      <text class="range-sep">-</text>
+      <picker mode="selector" range="{{years}}" value="{{endYearIndex}}" bindchange="onEndYearChange">
+        <view class="filter-picker">{{years[endYearIndex]}}<view class="chev"></view></view>
+      </picker>
+      <picker mode="selector" range="{{months}}" value="{{endMonthIndex}}" bindchange="onEndMonthChange">
+        <view class="filter-picker">{{months[endMonthIndex]}}<view class="chev"></view></view>
+      </picker>
+    </view>
+    <view class="filter-row2">
+      <picker mode="selector" range="{{typeOptions}}" value="{{typeIndex}}" bindchange="onTypeChange">
+        <view class="filter-picker">{{typeIndex === 0 ? '全部类型' : typeOptions[typeIndex]}}<view class="chev"></view></view>
+      </picker>
+      <view class="search-btn" bindtap="onSearchTap">搜索</view>
+    </view>
+  </view>
+
+  <!-- 合计金额 -->
+  <view class="total-card">
+    <text class="total-label">合计金额</text>
+    <text class="total-value">{{totalBonusText}}</text>
+  </view>
+
+  <!-- 状态卡片 -->
+  <view class="status-cards">
+    <view class="status-card bg-green {{statusFilter === 'paid' ? 'ring-green' : ''}}" data-key="paid" bindtap="onStatusCardTap">
+      <view class="status-card-label t-green">已回款</view>
+      <view class="status-card-count t-green-d">{{stats.paidCount}}</view>
+    </view>
+    <view class="status-card bg-orange {{statusFilter === 'unpaid' ? 'ring-orange' : ''}}" data-key="unpaid" bindtap="onStatusCardTap">
+      <view class="status-card-label t-orange">未回款</view>
+      <view class="status-card-count t-orange-d">{{stats.unpaidCount}}</view>
+    </view>
+    <view class="status-card bg-blue {{statusFilter === 'invoiced' ? 'ring-blue' : ''}}" data-key="invoiced" bindtap="onStatusCardTap">
+      <view class="status-card-label t-blue">已开票</view>
+      <view class="status-card-count t-blue-d">{{stats.invoicedCount}}</view>
+    </view>
+    <view class="status-card bg-gray {{statusFilter === 'uninvoiced' ? 'ring-gray' : ''}}" data-key="uninvoiced" bindtap="onStatusCardTap">
+      <view class="status-card-label t-gray">未开票</view>
+      <view class="status-card-count t-gray-d">{{stats.uninvoicedCount}}</view>
+    </view>
+  </view>
+
+  <!-- 业绩列表 -->
+  <view class="perf-list">
+    <view
+      wx:for="{{filteredList}}"
+      wx:key="id"
+      class="perf-item"
+      data-id="{{item.id}}"
+      bindtap="openItem"
+    >
+      <view class="perf-item-main">
+        <view class="perf-item-title">{{item.title}}</view>
+        <view class="perf-item-tags">
+          <text class="mini-tag {{item.isInvoiced ? 'mini-blue' : 'mini-gray'}}">{{item.isInvoiced ? '已开票' : '未开票'}}</text>
+          <text class="mini-tag {{item.isPaid ? 'mini-green' : 'mini-orange'}}">{{item.isPaid ? '已回款' : '未回款'}}</text>
+        </view>
+      </view>
+      <view class="perf-item-row">
+        <text class="perf-item-label">开票时间</text>
+        <text class="perf-item-value">{{item.invoiceDate}}</text>
+      </view>
+      <view class="perf-item-row">
+        <text class="perf-item-label">回款时间</text>
+        <text class="perf-item-value">{{item.paymentDate}}</text>
+      </view>
+    </view>
+    <view wx:if="{{filteredList.length === 0}}" class="empty">
+      {{statusFilter === 'all' ? '暂无数据' : '该状态下暂无数据'}}
+    </view>
+  </view>
+
+  <view class="bottom-space"></view>
+
+  <!-- 行程弹窗 -->
+  <appointment-modal
+    visible="{{showModal}}"
+    appointment="{{selectedAppointment}}"
+    users="{{users}}"
+    current-user="{{currentUser}}"
+    bind:close="closeModal"
+    bind:save="onModalSave"
+    bind:delete="onModalDelete"
+  />
+
+  <!-- 退出登录确认 -->
+  <view wx:if="{{showLogoutConfirm}}" class="overlay center" bindtap="cancelLogout">
+    <view class="dialog" catchtap="noop">
+      <view class="dialog-title">确认退出</view>
+      <view class="dialog-desc">确定要退出登录吗？</view>
+      <view class="dialog-btns">
+        <view class="btn btn-plain" bindtap="cancelLogout">取消</view>
+        <view class="btn btn-primary" bindtap="confirmLogout">确认退出</view>
+      </view>
+    </view>
+  </view>
+</view>

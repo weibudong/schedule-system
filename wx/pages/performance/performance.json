@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "业绩详情",
+  "usingComponents": {
+    "appointment-modal": "/components/appointment-modal/appointment-modal"
+  }
+}

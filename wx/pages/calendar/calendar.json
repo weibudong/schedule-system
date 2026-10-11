@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "当期工作",
+  "usingComponents": {
+    "appointment-modal": "/components/appointment-modal/appointment-modal",
+    "add-user-modal": "/components/add-user-modal/add-user-modal"
+  }
+}

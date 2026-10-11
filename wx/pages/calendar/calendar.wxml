@@ -1,0 +1,136 @@
+<view class="cal-page">
+  <!-- 顶部控制栏 -->
+  <view class="topbar">
+    <view class="month-nav">
+      <view class="nav-btn" bindtap="prevMonth">‹</view>
+      <view class="month-title" bindtap="toggleMonthPicker">
+        {{year}}年{{month}}月
+        <text class="month-arrow">▾</text>
+      </view>
+      <view class="nav-btn" bindtap="nextMonth">›</view>
+    </view>
+    <view class="top-actions">
+      <picker mode="selector" range="{{userOptions}}" value="{{userIndex}}" bindchange="onUserChange">
+        <view class="user-picker"><text class="user-picker-text">{{userOptions[userIndex]}}</text><view class="chev"></view></view>
+      </picker>
+      <view class="icon-btn add-btn" bindtap="handleAdd">＋</view>
+      <view wx:if="{{isAdmin}}" class="icon-btn user-btn" bindtap="openAddUser">👤</view>
+      <view class="name-btn" bindtap="showLogout">{{currentUser.name}}</view>
+    </view>
+  </view>
+
+  <!-- 月份选择弹层 -->
+  <view wx:if="{{showMonthPicker}}" class="overlay" bindtap="closeMonthPicker">
+    <view class="month-panel" catchtap="noop">
+      <view class="month-panel-header">
+        <view class="picker-nav" bindtap="pickerPrevYear">‹</view>
+        <text class="picker-year">{{pickerYear}}年</text>
+        <view class="picker-nav" bindtap="pickerNextYear">›</view>
+      </view>
+      <view class="month-grid">
+        <view
+          wx:for="{{months}}"
+          wx:key="*this"
+          class="month-cell {{pickerYear === year && item === month ? 'active' : ''}}"
+          data-month="{{item}}"
+          catchtap="pickMonth"
+        >{{item}}月</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 星期表头 -->
+  <view class="week-header">
+    <view
+      wx:for="{{weekDays}}"
+      wx:key="*this"
+      class="week-cell {{index >= 5 ? 'weekend' : ''}}"
+    >{{item}}</view>
+  </view>
+
+  <!-- 日历格子 -->
+  <view class="cal-grid">
+    <view
+      wx:for="{{days}}"
+      wx:key="fullDate"
+      class="cal-cell {{item.isCurrentMonth ? (item.isToday ? 'today' : '') : 'other-month'}} {{item.appointments.length === 0 ? 'clickable' : ''}}"
+      data-item="{{item}}"
+      bindtap="onCellTap"
+    >
+      <view class="cell-date {{!item.isCurrentMonth ? 'dim' : (item.isWeekend ? 'weekend' : '')}}">{{item.date}}</view>
+      <view
+        wx:for="{{item.appointments}}"
+        wx:for-item="appt"
+        wx:key="id"
+        class="chip {{appt.isPaid ? 'chip-paid' : 'chip-unpaid'}}"
+        data-id="{{appt.id}}"
+        catchtap="onChipTap"
+      >
+        <text class="chip-icon">{{appt.isAfternoon ? '🌙' : '☀️'}}</text>{{appt.text}}
+      </view>
+    </view>
+  </view>
+
+  <!-- 当月预约汇总 -->
+  <view wx:if="{{summary}}" class="summary-card">
+    <view class="summary-header">
+      <text class="summary-label">当月预约汇总</text>
+      <text class="summary-amount">{{totalAmountText}}元</text>
+    </view>
+    <view class="summary-grid">
+      <view class="summary-item">
+        <view class="summary-item-label">面谈</view>
+        <view class="summary-item-value c-blue">{{summary.interviewCount}}</view>
+      </view>
+      <view class="summary-item">
+        <view class="summary-item-label">培训</view>
+        <view class="summary-item-value c-green">{{summary.trainingCount}}</view>
+      </view>
+      <view class="summary-item">
+        <view class="summary-item-label">会议</view>
+        <view class="summary-item-value c-purple">{{summary.meetingCount}}</view>
+      </view>
+      <view class="summary-item">
+        <view class="summary-item-label">网络</view>
+        <view class="summary-item-value c-orange">{{summary.onlineCount}}</view>
+      </view>
+      <view class="summary-item">
+        <view class="summary-item-label">总数</view>
+        <view class="summary-item-value c-gray">{{summary.totalCount}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="bottom-space"></view>
+
+  <!-- 行程弹窗 -->
+  <appointment-modal
+    visible="{{showModal}}"
+    appointment="{{selectedAppointment}}"
+    default-date="{{defaultDate}}"
+    users="{{users}}"
+    current-user="{{currentUser}}"
+    bind:close="closeModal"
+    bind:save="onModalSave"
+    bind:delete="onModalDelete"
+  />
+
+  <!-- 新增人员弹窗 -->
+  <add-user-modal
+    visible="{{showAddUser}}"
+    bind:close="closeAddUser"
+    bind:submit="onAddUser"
+  />
+
+  <!-- 退出登录确认 -->
+  <view wx:if="{{showLogoutConfirm}}" class="overlay center" bindtap="cancelLogout">
+    <view class="dialog" catchtap="noop">
+      <view class="dialog-title">确认退出</view>
+      <view class="dialog-desc">确定要退出登录吗？</view>
+      <view class="dialog-btns">
+        <view class="btn btn-plain" bindtap="cancelLogout">取消</view>
+        <view class="btn btn-primary" bindtap="confirmLogout">确认退出</view>
+      </view>
+    </view>
+  </view>
+</view>
