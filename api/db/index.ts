@@ -180,17 +180,22 @@ function applyPragmas(database: Database.Database) {
   database.pragma('synchronous = NORMAL');
 }
 
-let db = new Database(dbPath);
-applyPragmas(db);
+// 惰性打开：启动阶段要先从对象存储恢复快照文件，之后才能打开连接，
+// 否则已打开的连接会指向被替换掉的旧 inode。
+let db: Database.Database | null = null;
 
-export function getDb() {
+export function getDb(): Database.Database {
+  if (!db) {
+    db = new Database(dbPath);
+    applyPragmas(db);
+  }
   return db;
 }
 
 export function reconnectDb() {
   console.log('[DB] 重新连接数据库:', dbPath);
   try {
-    db.close();
+    db?.close();
   } catch (e) {
     // 忽略关闭错误
   }
@@ -201,6 +206,7 @@ export function reconnectDb() {
 }
 
 export function initDb() {
+  const db = getDb();
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
