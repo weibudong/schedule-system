@@ -20,8 +20,7 @@ import calendarRoutes from './routes/calendar.js'
 import performanceRoutes from './routes/performance.js'
 import userRoutes from './routes/users.js'
 import { sendBackup, restoreFromBackup, backupDataDir } from './services/backup.js'
-import { initDb, reconnectDb, dbPath, dbBackupDir, storageLocation, storageDiagnostics, getDb } from './db/index.js'
-import { scheduleUpload, storageSyncState } from './services/storageSync.js'
+import { initDb, reconnectDb, dbPath, dbBackupDir, storageLocation, storageDiagnostics } from './db/index.js'
 
 // for esm mode
 const __filename = fileURLToPath(import.meta.url)
@@ -34,19 +33,6 @@ initDb()
 app.use(cors())
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
-
-/**
- * 写操作后触发快照同步（debounce，合并短时间内的连续写入）
- * 只挂在 /api 下，静态资源请求不触发；仅成功响应才同步
- */
-app.use('/api', (req: Request, res: Response, next: NextFunction) => {
-  if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
-    res.on('finish', () => {
-      if (res.statusCode < 400) scheduleUpload(getDb)
-    })
-  }
-  next()
-})
 
 /**
  * API Routes
@@ -203,8 +189,7 @@ app.use(
       success: true,
       message: 'ok',
       storageLocation,
-      storage: storageDiagnostics,
-      storageSync: storageSyncState
+      storage: storageDiagnostics
     })
   },
 )
