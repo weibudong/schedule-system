@@ -187,20 +187,19 @@ Page({
     this.setData({ statusFilter: this.data.statusFilter === key ? 'all' : key }, () => this.applyStatusFilter());
   },
 
-  // 自定义 tabBar 下 wx.hideTabBar 不可靠，双管齐下：
-  // 1) 通过 getTabBar() 控制组件自身显隐；2) 同时调用 wx.hideTabBar 隐藏原生容器
+  // 自定义 tabBar 下必须用 getTabBar() 控制显隐。
+  // 注意：不能用 wx.hideTabBar/showTabBar —— 那会把原生 tabBar 强制显示出来，
+  // 安卓真机上会出现「双 tabBar」叠加。
   hideTab() {
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ visible: false });
     }
-    wx.hideTabBar({ animation: false, fail: () => {} });
   },
 
   showTab() {
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ visible: true });
     }
-    wx.showTabBar({ animation: false, fail: () => {} });
   },
 
   openItem(e) {

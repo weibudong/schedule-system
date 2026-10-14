@@ -1,7 +1,7 @@
 Component({
   data: {
     selected: 0,
-    visible: true, // 自定义 tabBar 时 wx.hideTabBar 无效，需自行控制显隐
+    visible: true, // 页面通过 getTabBar().setData({visible}) 控制；勿调 wx.showTabBar（安卓会叠加出双 tabBar）
     list: [
       {
         pagePath: 'pages/calendar/calendar',
